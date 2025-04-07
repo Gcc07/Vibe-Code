@@ -48,6 +48,13 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) translateZ(200px);
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+
+        #gameOver.show {
+            display: block;
+            opacity: 1;
         }
 
         @keyframes pulse {
@@ -67,6 +74,12 @@
             z-index: 10;
             text-align: right;
             line-height: 1.4;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+
+        #score.show {
+            opacity: 1;
         }
 
         #startScreen {
@@ -79,6 +92,37 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) translateZ(200px);
+        }
+
+        #controlsManual {
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px auto;
+            max-width: 500px;
+            text-align: left;
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            padding: 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .control-key {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 10px;
+            border-radius: 5px;
+            min-width: 100px;
+            text-align: center;
+        }
+
+        .control-description {
+            flex: 1;
+            margin-left: 20px;
+            color: #fff;
         }
 
         #startButton {
@@ -149,6 +193,30 @@
         #gameCanvas.blur {
             filter: blur(5px);
         }
+
+        #hyperfuelGauge {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+
+        #hyperfuelGauge.show {
+            opacity: 1;
+        }
+
+        #stillnessMeter {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+
+        #stillnessMeter.show {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -158,7 +226,26 @@
         <div id="gameOver">GAME OVER<br>Press R to restart</div>
         <div id="startScreen">
             <h1>PSYCHEDELIC RACER 3D</h1>
-            <p>Use arrow keys or WASD to move</p>
+            <div id="controlsManual">
+                <div class="control-row">
+                    <div class="control-key">← → or A D</div>
+                    <div class="control-description">Move Left/Right</div>
+                </div>
+                <div class="control-row">
+                    <div class="control-key">SHIFT or SPACE</div>
+                    <div class="control-description">Boost (Uses Hyperfuel)</div>
+                </div>
+                <div class="control-row">
+                    <div class="control-key">ESC</div>
+                    <div class="control-description">Pause Game</div>
+                </div>
+                <div class="control-row">
+                    <div class="control-key">R</div>
+                    <div class="control-description">Restart Game</div>
+                </div>
+            </div>
+            <p>Collect coins and hyperfuel to boost your score!</p>
+            <p>Avoid buildings and don't stay still for too long!</p>
             <button id="startButton">START GAME</button>
         </div>
         <div id="pauseMenu">
@@ -166,6 +253,8 @@
             <p>Press ESC to resume</p>
             <button id="resumeButton">RESUME</button>
         </div>
+        <canvas id="hyperfuelGauge" width="200" height="20"></canvas>
+        <canvas id="stillnessMeter" width="200" height="20"></canvas>
     </div>
 
     <script>
@@ -192,30 +281,25 @@
             let hyperfuel = 100;
             let maxHyperfuel = 100;
             let isBoosting = false;
+            let boostIntensity = 0;
+            let stillnessMeter = 0;
+            let maxStillness = 100;
+            let stillnessIncreaseRate = 0.5;
+            let stillnessDecreaseRate = 1.0;
             let animationFrame;
             let hue = 0;
+            let colorPhase = 0;
             let roadLines = [];
             let tilt = 0;
             let isPaused = false;
             let fadeOutOpacity = 1;
             let fadeOutTimer = 0;
-            let screenShake = { x: 0, y: 0, intensity: 0 };
-            const fov = 800; // Constant FOV value
-            let targetFov = 800; // Target FOV for smooth transitions
-
-            // Coins
-            const coinsArray = [];
-            const coinSize = 15;
-            const coinValue = 5;
-
-            // Hyperfuel
-            const hyperfuelArray = [];
-            const hyperfuelSize = 25;
-            const hyperfuelValue = 25;
-
-            // Particles
-            const particles = [];
-            const maxParticles = 20;
+            const fov = 800;
+            let targetFov = 800;
+            let speedMultiplier = 1.0;
+            let targetSpeedMultiplier = 1.0;
+            const maxSpeedMultiplier = 2.5;
+            const speedIncreaseRate = 0.0001;
 
             // Player car
             const car = {
@@ -232,6 +316,23 @@
                 driftPower: 0
             };
 
+            // Optimized particle systems
+            const maxParticles = 5;
+            const maxExplosionParticles = 8;
+            const particles = [];
+            const explosions = [];
+            const explosionParticles = [];
+
+            // Coins
+            const coinsArray = [];
+            const coinSize = 15;
+            const coinValue = 5;
+
+            // Hyperfuel
+            const hyperfuelArray = [];
+            const hyperfuelSize = 25;
+            const hyperfuelValue = 25;
+
             // Track segments
             const trackSegments = [];
             const segmentHeight = 50;
@@ -244,6 +345,21 @@
             const obstacles = [];
             const obstacleWidth = 50;
             const obstacleHeight = 50;
+            const explosionRadius = 50; // Reduced from 100
+
+            // Enemy car and projectiles
+            const enemyCars = [];
+            const enemyProjectiles = [];
+            const enemyCarWidth = 30;
+            const enemyCarHeight = 48;
+            const projectileSize = 8;
+            const projectileSpeed = 10;
+
+            // Add to game variables
+            const speedLines = [];
+            const maxSpeedLines = 20;
+            const speedLineLength = 100;
+            const speedLineWidth = 2;
 
             // Initialize track
             function initTrack() {
@@ -273,13 +389,27 @@
                     const trackX = canvas.width / 2 + topSegment.offset - trackWidth / 2;
                     const randomX = trackX + Math.random() * trackWidth;
                     
+                    // 10% chance to create a blinking building
+                    const isBlinking = Math.random() < 0.1;
+                    
+                    // Create base hue
+                    const baseHue = (hue + Math.random() * 360) % 360;
+                    // Create contrasting hue (180 degrees apart)
+                    const contrastHue = (baseHue + 180) % 360;
+                    
                     obstacles.push({
                         x: randomX,
                         y: -obstacleHeight,
                         width: obstacleWidth,
                         height: obstacleHeight,
                         z: 0,
-                        hue: (hue + Math.random() * 360) % 360
+                        hue: baseHue,
+                        isBlinking: isBlinking,
+                        blinkTimer: 0,
+                        blinkState: false,
+                        explosionTimer: isBlinking ? 300 : 0,
+                        originalHue: baseHue,
+                        contrastHue: contrastHue
                     });
                 }
             }
@@ -460,6 +590,8 @@
 
             // Draw hyperfuel gauge
             function drawHyperfuelGauge() {
+                if (!gameStarted || gameOver || isPaused) return;
+                
                 const gaugeWidth = 200;
                 const gaugeHeight = 20;
                 const gaugeX = 20;
@@ -472,8 +604,8 @@
                 // Draw hyperfuel level
                 const hyperfuelWidth = (hyperfuel / maxHyperfuel) * gaugeWidth;
                 const hyperfuelGradient = ctx.createLinearGradient(gaugeX, gaugeY, gaugeX + hyperfuelWidth, gaugeY);
-                hyperfuelGradient.addColorStop(0, `hsl(${hue}, 100%, 50%)`);
-                hyperfuelGradient.addColorStop(1, `hsl(${(hue + 60) % 360}, 100%, 50%)`);
+                hyperfuelGradient.addColorStop(0, `hsl(${(hue + colorPhase) % 360}, 100%, 50%)`);
+                hyperfuelGradient.addColorStop(1, `hsl(${(hue + colorPhase + 60) % 360}, 100%, 50%)`);
                 
                 ctx.fillStyle = hyperfuelGradient;
                 ctx.fillRect(gaugeX, gaugeY, hyperfuelWidth, gaugeHeight);
@@ -489,32 +621,334 @@
                 ctx.fillText(`Hyperfuel: ${Math.floor(hyperfuel)}%`, gaugeX + 10, gaugeY + 15);
             }
 
-            // Update game state
+            // Draw stillness meter
+            function drawStillnessMeter() {
+                if (!gameStarted || gameOver || isPaused) return;
+                
+                const gaugeWidth = 200;
+                const gaugeHeight = 20;
+                const gaugeX = 20;
+                const gaugeY = 50;
+                
+                // Draw gauge background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(gaugeX, gaugeY, gaugeWidth, gaugeHeight);
+                
+                // Draw stillness level with warning colors
+                const stillnessWidth = (stillnessMeter / maxStillness) * gaugeWidth;
+                const stillnessGradient = ctx.createLinearGradient(gaugeX, gaugeY, gaugeX + stillnessWidth, gaugeY);
+                
+                // Color changes based on stillness level
+                if (stillnessMeter > maxStillness * 0.8) {
+                    // Red warning
+                    stillnessGradient.addColorStop(0, 'hsl(0, 100%, 50%)');
+                    stillnessGradient.addColorStop(1, 'hsl(0, 100%, 30%)');
+                } else if (stillnessMeter > maxStillness * 0.5) {
+                    // Orange warning
+                    stillnessGradient.addColorStop(0, 'hsl(30, 100%, 50%)');
+                    stillnessGradient.addColorStop(1, 'hsl(30, 100%, 30%)');
+                } else {
+                    // Yellow warning
+                    stillnessGradient.addColorStop(0, 'hsl(60, 100%, 50%)');
+                    stillnessGradient.addColorStop(1, 'hsl(60, 100%, 30%)');
+                }
+                
+                ctx.fillStyle = stillnessGradient;
+                ctx.fillRect(gaugeX, gaugeY, stillnessWidth, gaugeHeight);
+                
+                // Draw gauge border
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(gaugeX, gaugeY, gaugeWidth, gaugeHeight);
+                
+                // Draw stillness text with warning effect
+                const warningIntensity = Math.sin(Date.now() / 100) * 0.5 + 0.5;
+                ctx.fillStyle = `rgba(255, 255, 255, ${1 - warningIntensity * 0.5})`;
+                ctx.font = '16px Arial';
+                ctx.fillText(`Stillness: ${Math.floor(stillnessMeter)}%`, gaugeX + 10, gaugeY + 15);
+            }
+
+            // Create explosion with pixelated effect
+            function createExplosion(x, y, hue) {
+                explosions.push({
+                    x: x,
+                    y: y,
+                    radius: 0,
+                    maxRadius: 60,
+                    hue: hue,
+                    life: 1.0,
+                    dangerZone: explosionRadius,
+                    pulsePhase: 0,
+                    shockwaveRadius: 0,
+                    shockwaveLife: 1.0
+                });
+
+                // Create pixelated explosion particles
+                const pixelSize = 4; // Size of each pixel
+                const numPixels = 20; // Number of pixels in the explosion
+                
+                for (let i = 0; i < numPixels; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = Math.random() * 30; // Random distance from center
+                    const speed = Math.random() * 3 + 2;
+                    const pixelHue = (hue + Math.random() * 60 - 30) % 360;
+                    
+                    explosionParticles.push({
+                        x: x + Math.cos(angle) * distance,
+                        y: y + Math.sin(angle) * distance,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        size: pixelSize,
+                        hue: pixelHue,
+                        life: 1.0,
+                        decay: Math.random() * 0.02 + 0.01,
+                        rotation: Math.random() * Math.PI * 2,
+                        rotationSpeed: (Math.random() - 0.5) * 0.2,
+                        isPixel: true
+                    });
+                }
+            }
+
+            // Draw explosions with pixelated effect
+            function drawExplosions() {
+                explosions.forEach(explosion => {
+                    // Draw danger zone indicator
+                    ctx.save();
+                    ctx.globalAlpha = 0.5 + Math.sin(Date.now() / 100) * 0.3;
+                    ctx.strokeStyle = 'red';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.arc(explosion.x, explosion.y, explosion.dangerZone, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // Draw shockwave
+                    if (explosion.shockwaveLife > 0) {
+                        const shockwaveGradient = ctx.createRadialGradient(
+                            explosion.x, explosion.y, 0,
+                            explosion.x, explosion.y, explosion.shockwaveRadius
+                        );
+                        shockwaveGradient.addColorStop(0, `hsla(${explosion.hue}, 100%, 90%, ${explosion.shockwaveLife * 0.3})`);
+                        shockwaveGradient.addColorStop(1, `hsla(${explosion.hue}, 100%, 50%, 0)`);
+                        
+                        ctx.fillStyle = shockwaveGradient;
+                        ctx.beginPath();
+                        ctx.arc(explosion.x, explosion.y, explosion.shockwaveRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Draw explosion core with pixelated effect
+                    const coreSize = explosion.radius;
+                    const pixelSize = 4;
+                    const numPixels = Math.floor(coreSize / pixelSize);
+                    
+                    for (let i = 0; i < numPixels; i++) {
+                        const angle = (i / numPixels) * Math.PI * 2;
+                        const distance = Math.random() * coreSize;
+                        const x = explosion.x + Math.cos(angle) * distance;
+                        const y = explosion.y + Math.sin(angle) * distance;
+                        
+                        ctx.fillStyle = `hsla(${explosion.hue}, 100%, 90%, ${explosion.life * 0.8})`;
+                        ctx.fillRect(x - pixelSize/2, y - pixelSize/2, pixelSize, pixelSize);
+                    }
+                });
+
+                // Draw explosion particles with pixelated effect
+                explosionParticles.forEach(particle => {
+                    ctx.save();
+                    ctx.translate(particle.x, particle.y);
+                    ctx.rotate(particle.rotation);
+                    
+                    // Draw pixel with glow
+                    ctx.shadowColor = `hsla(${particle.hue}, 100%, 80%, ${particle.life * 0.8})`;
+                    ctx.shadowBlur = 10;
+                    ctx.fillStyle = `hsla(${particle.hue}, 100%, 90%, ${particle.life})`;
+                    ctx.fillRect(-particle.size/2, -particle.size/2, particle.size, particle.size);
+                    
+                    // Draw pixel trail
+                    ctx.strokeStyle = `hsla(${particle.hue}, 100%, 70%, ${particle.life * 0.5})`;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(-particle.vx, -particle.vy);
+                    ctx.stroke();
+                    
+                    ctx.restore();
+                });
+            }
+
+            // Update explosions with pixelated effect
+            function updateExplosions() {
+                explosions.forEach(explosion => {
+                    explosion.radius += 5;
+                    explosion.life -= 0.02;
+                    explosion.pulsePhase += 0.1;
+                    
+                    if (explosion.shockwaveLife > 0) {
+                        explosion.shockwaveRadius += 8;
+                        explosion.shockwaveLife -= 0.02;
+                    }
+                });
+
+                // Remove finished explosions
+                for (let i = explosions.length - 1; i >= 0; i--) {
+                    if (explosions[i].life <= 0) {
+                        explosions.splice(i, 1);
+                    }
+                }
+
+                // Update explosion particles with pixelated effect
+                for (let i = explosionParticles.length - 1; i >= 0; i--) {
+                    const particle = explosionParticles[i];
+                    particle.x += particle.vx;
+                    particle.y += particle.vy;
+                    particle.life -= particle.decay;
+                    particle.rotation += particle.rotationSpeed;
+                    
+                    // Add slight random movement to pixels
+                    if (particle.isPixel) {
+                        particle.vx += (Math.random() - 0.5) * 0.2;
+                        particle.vy += (Math.random() - 0.5) * 0.2;
+                    }
+                    
+                    if (particle.life <= 0) {
+                        explosionParticles.splice(i, 1);
+                    }
+                }
+            }
+
+            // Optimized collision detection
+            function checkCollisions() {
+                const currentSegment = trackSegments.find(segment => 
+                    segment.y <= car.y && segment.y + segmentHeight > car.y
+                );
+                
+                if (currentSegment) {
+                    const trackX = canvas.width / 2 + currentSegment.offset;
+                    const trackLeft = trackX - trackWidth/2;
+                    const trackRight = trackX + trackWidth/2;
+                    
+                    // Optimized boundary checks
+                    if (car.x - car.width/2 < trackLeft + 20) {
+                        car.x = trackLeft + 20 + car.width/2;
+                        car.velocity = -car.velocity * 0.5;
+                        return false;
+                    }
+                    
+                    if (car.x + car.width/2 > trackRight - 20) {
+                        car.x = trackRight - 20 - car.width/2;
+                        car.velocity = -car.velocity * 0.5;
+                        return false;
+                    }
+                }
+
+                // Optimized obstacle collision detection
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    const obstacle = obstacles[i];
+                    const collision = car.x + car.width / 2 > obstacle.x &&
+                                    car.x - car.width / 2 < obstacle.x + obstacle.width &&
+                                    car.y + car.height / 2 > obstacle.y &&
+                                    car.y - car.height / 2 < obstacle.y + obstacle.height;
+                    
+                    if (collision) {
+                        createExplosion(
+                            obstacle.x + obstacle.width/2,
+                            obstacle.y + obstacle.height/2,
+                            obstacle.hue
+                        );
+                        
+                        obstacles.splice(i, 1);
+                        score += 50;
+                        scoreElement.innerHTML = `Score: ${score}<br>Hyperfuel: ${Math.floor(hyperfuel)}%`;
+                        
+                        // Create car explosion and end game
+                        createExplosion(car.x, car.y, hue);
+                        setTimeout(() => {
+                            gameOver = true;
+                            gameOverScreen.style.display = 'block';
+                            setTimeout(() => {
+                                gameOverScreen.classList.add('show');
+                            }, 100);
+                        }, 500);
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+
+            // Update function
             function update() {
                 if (gameOver || isPaused) return;
                 
-                // Update screen shake with increased intensity
-                if (isBoosting) {
-                    screenShake.intensity = 15; // Increased from 5 to 15
+                // Update speed lines
+                updateSpeedLines();
+                
+                // Update stillness meter
+                const isMoving = Math.abs(car.velocity) > 0.1 || isBoosting;
+                if (isMoving) {
+                    stillnessMeter = Math.max(0, stillnessMeter - stillnessDecreaseRate);
                 } else {
-                    screenShake.intensity *= 0.9;
+                    stillnessMeter = Math.min(maxStillness, stillnessMeter + stillnessIncreaseRate);
+                    
+                    // Check for explosion if stillness meter is full
+                    if (stillnessMeter >= maxStillness) {
+                        createExplosion(car.x, car.y, hue);
+                        setTimeout(() => {
+                            gameOver = true;
+                            gameOverScreen.style.display = 'block';
+                            setTimeout(() => {
+                                gameOverScreen.classList.add('show');
+                            }, 100);
+                        }, 500);
+                        return;
+                    }
                 }
-                screenShake.x = (Math.random() - 0.5) * screenShake.intensity;
-                screenShake.y = (Math.random() - 0.5) * screenShake.intensity;
+                
+                // Gradually increase target speed multiplier
+                targetSpeedMultiplier = Math.min(maxSpeedMultiplier, 1.0 + (score * 0.001));
+                speedMultiplier += (targetSpeedMultiplier - speedMultiplier) * 0.001;
+                
+                // Smoothly transition boost intensity
+                const targetBoostIntensity = isBoosting ? 1 : 0;
+                boostIntensity += (targetBoostIntensity - boostIntensity) * 0.1;
+                
+                updateExplosions();
+                
+                // Simplified color phase update
+                colorPhase = (colorPhase + 0.05) % 360;
+                
+                // Static game container transform - no changes during boost
+                gameContainer.style.transform = `rotateX(30deg) rotateY(${tilt}deg)`;
 
-                // Apply screen shake to game container
-                gameContainer.style.transform = `rotateX(${isBoosting ? 20 : 30}deg) rotateY(${tilt}deg) scale(${isBoosting ? 0.9 : 1}) translate(${screenShake.x}px, ${screenShake.y}px)`;
+                // Reduced particle creation
+                if (Math.random() < 0.02) {
+                    createParticle();
+                }
+
+                // Reduced obstacle creation
+                if (Math.random() < 0.015) {
+                    createObstacle();
+                }
+
+                // Reduced coin creation
+                if (Math.random() < 0.01) {
+                    createCoin();
+                }
+
+                // Reduced hyperfuel creation
+                if (Math.random() < 0.005) {
+                    createHyperfuel();
+                }
 
                 // Update particles with reduced frequency
                 updateParticles();
-                if (Math.random() < 0.05) {
-                    createParticle();
-                }
 
                 // Update coins
                 coinsArray.forEach(coin => {
                     if (!coin.collected) {
-                        coin.y += isBoosting ? 12 : 6;
+                        coin.y += (isBoosting ? 12 : 6) * speedMultiplier;
                         coin.hue = (coin.hue + 1) % 360;
                         
                         // Check coin collection
@@ -538,7 +972,7 @@
                 // Update hyperfuel
                 hyperfuelArray.forEach(hyperfuelItem => {
                     if (!hyperfuelItem.collected) {
-                        hyperfuelItem.y += isBoosting ? 12 : 6;
+                        hyperfuelItem.y += (isBoosting ? 12 : 6) * speedMultiplier;
                         hyperfuelItem.hue = (hyperfuelItem.hue + 1) % 360;
                         
                         // Check hyperfuel collection
@@ -562,15 +996,15 @@
 
                 // Handle hyperfuel consumption when boosting
                 if (isBoosting && hyperfuel > 0) {
-                    hyperfuel = Math.max(0, hyperfuel - 0.2); // Consume hyperfuel while boosting
+                    hyperfuel = Math.max(0, hyperfuel - 0.5); // Increased from 0.2 to 0.5 for faster consumption
                     if (hyperfuel <= 0) {
                         isBoosting = false;
                     }
                 }
 
-                // Update segment positions and properties
+                // Update segment positions and properties with speed multiplier
                 trackSegments.forEach(segment => {
-                    segment.y += isBoosting ? 12 : 6; // Double speed when boosting
+                    segment.y += (isBoosting ? 12 : 6) * speedMultiplier;
                     segment.hue = (segment.hue + 0.8) % 360;
                     
                     // Update phase for smooth curve
@@ -591,11 +1025,40 @@
                     }
                 });
 
-                // Move obstacles
-                obstacles.forEach(obstacle => {
-                    obstacle.y += isBoosting ? 16 : 8; // Double speed when boosting
-                    obstacle.z += isBoosting ? 1.2 : 0.6; // Double speed when boosting
+                // Move obstacles with speed multiplier
+                obstacles.forEach((obstacle, index) => {
+                    obstacle.y += (isBoosting ? 16 : 8) * speedMultiplier;
+                    obstacle.z += (isBoosting ? 1.2 : 0.6) * speedMultiplier;
                     obstacle.hue = (obstacle.hue + 1.5) % 360;
+
+                    // Check if blinking building has reached car level
+                    if (obstacle.isBlinking && Math.abs(obstacle.y - car.y) < 20) {
+                        createExplosion(
+                            obstacle.x + obstacle.width/2,
+                            obstacle.y + obstacle.height/2,
+                            obstacle.hue
+                        );
+                        
+                        // Check if car is within explosion radius
+                        const dx = car.x - (obstacle.x + obstacle.width/2);
+                        const dy = car.y - (obstacle.y + obstacle.height/2);
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < explosionRadius) {
+                            createExplosion(car.x, car.y, hue);
+                            setTimeout(() => {
+                                gameOver = true;
+                                gameOverScreen.style.display = 'block';
+                                setTimeout(() => {
+                                    gameOverScreen.classList.add('show');
+                                }, 100);
+                            }, 500);
+                        }
+                        
+                        // Remove the building
+                        obstacles.splice(index, 1);
+                        return;
+                    }
                 });
 
                 // Remove off-screen obstacles
@@ -642,21 +1105,28 @@
                 }
             }
 
-            // Draw everything
+            // Optimized draw function
             function draw() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Batch similar drawing operations
+                ctx.save();
                 drawBackground();
                 drawTrack();
                 drawParticles();
                 drawCoins();
                 drawHyperfuel();
                 drawObstacles();
+                drawExplosions();
+                drawSpeedLines();
                 drawCar();
                 drawHyperfuelGauge();
+                drawStillnessMeter();
+                ctx.restore();
 
-                // Add bright overlay when boosting
-                if (isBoosting) {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                // Add bright overlay with smooth transition
+                if (boostIntensity > 0) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${0.2 * boostIntensity})`;
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
             }
@@ -666,23 +1136,20 @@
                 hue = (hue + 0.3) % 360;
                 const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
                 
-                // Enhanced brightness when boosting
-                if (isBoosting) {
-                    gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, 0.4)`);
-                    gradient.addColorStop(0.5, `hsla(${(hue + 120) % 360}, 100%, 70%, 0.3)`);
-                    gradient.addColorStop(1, `hsla(${(hue + 240) % 360}, 100%, 70%, 0.4)`);
-                } else {
-                    gradient.addColorStop(0, `hsla(${hue}, 100%, 50%, 0.3)`);
-                    gradient.addColorStop(0.5, `hsla(${(hue + 120) % 360}, 100%, 50%, 0.2)`);
-                    gradient.addColorStop(1, `hsla(${(hue + 240) % 360}, 100%, 50%, 0.3)`);
-                }
+                // Enhanced brightness when boosting with smooth transition
+                const brightness = 50 + (boostIntensity * 20); // Base 50% + up to 20% more
+                const alpha = 0.3 + (boostIntensity * 0.1); // Base 0.3 + up to 0.1 more
+                
+                gradient.addColorStop(0, `hsla(${(hue + colorPhase) % 360}, 100%, ${brightness}%, ${alpha})`);
+                gradient.addColorStop(0.5, `hsla(${(hue + colorPhase + 120) % 360}, 100%, ${brightness}%, ${alpha * 0.8})`);
+                gradient.addColorStop(1, `hsla(${(hue + colorPhase + 240) % 360}, 100%, ${brightness}%, ${alpha})`);
                 
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                // Draw vaporwave grid
+                // Draw vaporwave grid with modulated colors
                 const gridSize = 40;
-                const gridColor = `hsla(${(hue + 180) % 360}, 100%, 50%, 0.1)`;
+                const gridColor = `hsla(${(hue + colorPhase + 180) % 360}, 100%, 50%, 0.1)`;
                 ctx.strokeStyle = gridColor;
                 ctx.lineWidth = 1;
 
@@ -709,7 +1176,7 @@
                 ctx.translate(-canvas.width/2, -canvas.height/2);
                 
                 // Draw diagonal lines for vaporwave effect
-                const diagonalColor = `hsla(${(hue + 90) % 360}, 100%, 50%, 0.15)`;
+                const diagonalColor = `hsla(${(hue + colorPhase + 90) % 360}, 100%, 50%, 0.15)`;
                 ctx.strokeStyle = diagonalColor;
                 for (let i = -canvas.width; i < canvas.width * 2; i += gridSize) {
                     ctx.beginPath();
@@ -737,17 +1204,17 @@
                     ctx.rotate(tilt * Math.PI / 180);
                     ctx.translate(-(x + trackWidth/2), -(y + segmentHeight/2));
                     
-                    // Draw track base with simplified gradient
+                    // Draw track base with modulated gradient
                     const trackGradient = ctx.createLinearGradient(x, y, x, y + segmentHeight);
-                    trackGradient.addColorStop(0, `hsla(${segment.hue}, 100%, 20%, 0.9)`);
-                    trackGradient.addColorStop(0.5, `hsla(${(segment.hue + 60) % 360}, 100%, 30%, 0.9)`);
-                    trackGradient.addColorStop(1, `hsla(${segment.hue}, 100%, 20%, 0.9)`);
+                    trackGradient.addColorStop(0, `hsla(${(segment.hue + colorPhase) % 360}, 100%, 20%, 0.9)`);
+                    trackGradient.addColorStop(0.5, `hsla(${(segment.hue + colorPhase + 60) % 360}, 100%, 30%, 0.9)`);
+                    trackGradient.addColorStop(1, `hsla(${(segment.hue + colorPhase) % 360}, 100%, 20%, 0.9)`);
                     ctx.fillStyle = trackGradient;
                     ctx.fillRect(x, y, trackWidth, segmentHeight);
                     
                     // Simplified track surface pattern
                     const patternSize = 30;
-                    const patternColor = `hsla(${(segment.hue + 180) % 360}, 100%, 50%, 0.05)`;
+                    const patternColor = `hsla(${(segment.hue + colorPhase + 180) % 360}, 100%, 50%, 0.05)`;
                     ctx.strokeStyle = patternColor;
                     ctx.lineWidth = 1;
                     
@@ -780,8 +1247,8 @@
                     // Draw center line with simplified animation
                     const centerLineWidth = 4;
                     const centerLineOffset = Math.sin((y + trackOffset) / 30) * 5;
-                    ctx.fillStyle = `hsl(${(segment.hue + 120) % 360}, 100%, 80%)`;
-                    ctx.shadowColor = `hsl(${(segment.hue + 120) % 360}, 100%, 50%)`;
+                    ctx.fillStyle = `hsl(${(segment.hue + colorPhase + 120) % 360}, 100%, 80%)`;
+                    ctx.shadowColor = `hsl(${(segment.hue + colorPhase + 120) % 360}, 100%, 50%)`;
                     ctx.shadowBlur = 8;
                     ctx.fillRect(
                         x + trackWidth/2 - centerLineWidth/2 + centerLineOffset,
@@ -793,8 +1260,8 @@
                     // Draw side lines with simplified animation
                     const sideLineWidth = 2;
                     const sideLineOffset = Math.sin((y + trackOffset) / 40) * 3;
-                    ctx.fillStyle = `hsl(${(segment.hue + 180) % 360}, 100%, 80%)`;
-                    ctx.shadowColor = `hsl(${(segment.hue + 180) % 360}, 100%, 50%)`;
+                    ctx.fillStyle = `hsl(${(segment.hue + colorPhase + 180) % 360}, 100%, 80%)`;
+                    ctx.shadowColor = `hsl(${(segment.hue + colorPhase + 180) % 360}, 100%, 50%)`;
                     ctx.shadowBlur = 5;
                     
                     // Left side line
@@ -828,7 +1295,7 @@
                 ctx.rotate((tilt + car.driftAngle) * Math.PI / 180);
                 ctx.translate(-car.x, -car.y);
                 
-                // Main body with advanced gradient
+                // Main body with modulated gradient and smooth boost transition
                 const carGradient = ctx.createLinearGradient(
                     car.x - car.width/2,
                     car.y - car.height/2,
@@ -836,27 +1303,24 @@
                     car.y + car.height/2
                 );
                 
-                // Enhanced colors when boosting
-                if (isBoosting) {
-                    carGradient.addColorStop(0, `hsl(${hue}, 100%, 80%)`);
-                    carGradient.addColorStop(0.3, `hsl(${(hue + 180) % 360}, 100%, 60%)`);
-                    carGradient.addColorStop(0.7, `hsl(${(hue + 180) % 360}, 100%, 60%)`);
-                    carGradient.addColorStop(1, `hsl(${hue}, 100%, 80%)`);
-                } else {
-                    carGradient.addColorStop(0, `hsl(${hue}, 100%, 60%)`);
-                    carGradient.addColorStop(0.3, `hsl(${(hue + 180) % 360}, 100%, 40%)`);
-                    carGradient.addColorStop(0.7, `hsl(${(hue + 180) % 360}, 100%, 40%)`);
-                    carGradient.addColorStop(1, `hsl(${hue}, 100%, 60%)`);
-                }
+                // Enhanced colors with smooth boost transition
+                const baseBrightness = 60;
+                const boostBrightness = 80;
+                const currentBrightness = baseBrightness + (boostIntensity * (boostBrightness - baseBrightness));
                 
-                // Draw car body with dynamic outline
+                carGradient.addColorStop(0, `hsl(${(hue + colorPhase) % 360}, 100%, ${currentBrightness}%)`);
+                carGradient.addColorStop(0.3, `hsl(${(hue + colorPhase + 180) % 360}, 100%, ${currentBrightness - 20}%)`);
+                carGradient.addColorStop(0.7, `hsl(${(hue + colorPhase + 180) % 360}, 100%, ${currentBrightness - 20}%)`);
+                carGradient.addColorStop(1, `hsl(${(hue + colorPhase) % 360}, 100%, ${currentBrightness}%)`);
+                
+                // Draw car body with dynamic outline and architectural details
                 ctx.lineWidth = 3;
-                ctx.strokeStyle = `hsl(${hue}, 100%, 90%)`;
-                ctx.shadowColor = `hsl(${hue}, 100%, 70%)`;
+                ctx.strokeStyle = `hsl(${(hue + colorPhase) % 360}, 100%, 90%)`;
+                ctx.shadowColor = `hsl(${(hue + colorPhase) % 360}, 100%, 70%)`;
                 ctx.shadowBlur = 10;
                 ctx.fillStyle = carGradient;
                 
-                // Draw main body
+                // Draw main body with futuristic shape
                 ctx.beginPath();
                 ctx.moveTo(car.x - car.width/2, car.y - car.height/3);
                 ctx.lineTo(car.x - car.width/3, car.y - car.height/2);
@@ -870,10 +1334,23 @@
                 ctx.fill();
                 ctx.stroke();
                 
-                // Draw windows with dynamic outline
+                // Add architectural details (horizontal lines)
+                const detailSpacing = car.height / 4;
+                for (let i = 1; i < 4; i++) {
+                    const detailY = car.y - car.height/2 + i * detailSpacing;
+                    ctx.beginPath();
+                    ctx.moveTo(car.x - car.width/2, detailY);
+                    ctx.lineTo(car.x + car.width/2, detailY);
+                    ctx.strokeStyle = `hsla(${(hue + colorPhase + 180) % 360}, 100%, 50%, 0.5)`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+                
+                // Draw windows with dynamic outline and glowing effect
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.strokeStyle = `hsl(${(hue + 120) % 360}, 100%, 90%)`;
-                ctx.shadowColor = `hsl(${(hue + 120) % 360}, 100%, 70%)`;
+                ctx.strokeStyle = `hsl(${(hue + colorPhase + 120) % 360}, 100%, 90%)`;
+                ctx.shadowColor = `hsl(${(hue + colorPhase + 120) % 360}, 100%, 70%)`;
+                ctx.shadowBlur = 15;
                 ctx.beginPath();
                 ctx.moveTo(car.x - car.width/3, car.y - car.height/3);
                 ctx.lineTo(car.x + car.width/3, car.y - car.height/3);
@@ -883,10 +1360,23 @@
                 ctx.fill();
                 ctx.stroke();
                 
-                // Draw spoiler with dynamic outline
+                // Add window details (vertical lines)
+                const windowDetailSpacing = car.width / 4;
+                for (let i = 1; i < 3; i++) {
+                    const detailX = car.x - car.width/3 + i * windowDetailSpacing;
+                    ctx.beginPath();
+                    ctx.moveTo(detailX, car.y - car.height/3);
+                    ctx.lineTo(detailX, car.y);
+                    ctx.strokeStyle = `hsla(${(hue + colorPhase + 120) % 360}, 100%, 70%, 0.5)`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+                
+                // Draw spoiler with dynamic outline and glowing effect
                 ctx.fillStyle = carGradient;
-                ctx.strokeStyle = `hsl(${(hue + 60) % 360}, 100%, 90%)`;
-                ctx.shadowColor = `hsl(${(hue + 60) % 360}, 100%, 70%)`;
+                ctx.strokeStyle = `hsl(${(hue + colorPhase + 60) % 360}, 100%, 90%)`;
+                ctx.shadowColor = `hsl(${(hue + colorPhase + 60) % 360}, 100%, 70%)`;
+                ctx.shadowBlur = 15;
                 ctx.beginPath();
                 ctx.moveTo(car.x - car.width/2, car.y + car.height/3);
                 ctx.lineTo(car.x - car.width/2, car.y + car.height/2);
@@ -896,7 +1386,19 @@
                 ctx.fill();
                 ctx.stroke();
                 
-                // Draw wheels with dynamic outline
+                // Add spoiler details
+                const spoilerDetailSpacing = car.width / 4;
+                for (let i = 1; i < 3; i++) {
+                    const detailX = car.x - car.width/2 + i * spoilerDetailSpacing;
+                    ctx.beginPath();
+                    ctx.moveTo(detailX, car.y + car.height/3);
+                    ctx.lineTo(detailX, car.y + car.height/2);
+                    ctx.strokeStyle = `hsla(${(hue + colorPhase + 60) % 360}, 100%, 70%, 0.5)`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+                
+                // Draw wheels with dynamic outline and glowing effect
                 const wheelRadius = car.width/6;
                 const wheelY = car.y + car.height/2;
                 
@@ -904,9 +1406,17 @@
                 ctx.beginPath();
                 ctx.arc(car.x - car.width/3, wheelY, wheelRadius, 0, Math.PI * 2);
                 ctx.fillStyle = 'black';
-                ctx.strokeStyle = `hsl(${(hue + 180) % 360}, 100%, 90%)`;
-                ctx.shadowColor = `hsl(${(hue + 180) % 360}, 100%, 70%)`;
+                ctx.strokeStyle = `hsl(${(hue + colorPhase + 180) % 360}, 100%, 90%)`;
+                ctx.shadowColor = `hsl(${(hue + colorPhase + 180) % 360}, 100%, 70%)`;
+                ctx.shadowBlur = 15;
                 ctx.fill();
+                ctx.stroke();
+                
+                // Add wheel details
+                ctx.beginPath();
+                ctx.arc(car.x - car.width/3, wheelY, wheelRadius * 0.6, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${(hue + colorPhase + 180) % 360}, 100%, 70%, 0.5)`;
+                ctx.lineWidth = 1;
                 ctx.stroke();
                 
                 // Right wheel
@@ -915,15 +1425,20 @@
                 ctx.fill();
                 ctx.stroke();
                 
+                // Add wheel details
+                ctx.beginPath();
+                ctx.arc(car.x + car.width/3, wheelY, wheelRadius * 0.6, 0, Math.PI * 2);
+                ctx.stroke();
+                
                 // Enhanced engine effects when boosting
                 if (isBoosting) {
-                    // Add boost trails
+                    // Add boost trails with enhanced glow
                     const trailGradient = ctx.createLinearGradient(
                         car.x - car.width/2, car.y + car.height/2,
                         car.x - car.width/2, car.y + car.height/2 + 40
                     );
-                    trailGradient.addColorStop(0, `hsla(${(hue + 60) % 360}, 100%, 90%, 0.8)`);
-                    trailGradient.addColorStop(1, `hsla(${(hue + 60) % 360}, 100%, 90%, 0)`);
+                    trailGradient.addColorStop(0, `hsla(${(hue + colorPhase + 60) % 360}, 100%, 90%, 0.8)`);
+                    trailGradient.addColorStop(1, `hsla(${(hue + colorPhase + 60) % 360}, 100%, 90%, 0)`);
                     
                     ctx.fillStyle = trailGradient;
                     ctx.beginPath();
@@ -933,13 +1448,15 @@
                     ctx.closePath();
                     ctx.fill();
                     
-                    // Add boost particles
+                    // Add boost particles with enhanced glow
                     for (let i = 0; i < 5; i++) {
                         const particleX = car.x + (Math.random() - 0.5) * car.width;
                         const particleY = car.y + car.height/2 + Math.random() * 30;
                         const particleSize = Math.random() * 4 + 2;
                         
-                        ctx.fillStyle = `hsla(${(hue + 60) % 360}, 100%, 90%, ${Math.random() * 0.5 + 0.5})`;
+                        ctx.fillStyle = `hsla(${(hue + colorPhase + 60) % 360}, 100%, 90%, ${Math.random() * 0.5 + 0.5})`;
+                        ctx.shadowColor = `hsla(${(hue + colorPhase + 60) % 360}, 100%, 70%, 0.8)`;
+                        ctx.shadowBlur = 10;
                         ctx.beginPath();
                         ctx.arc(particleX, particleY, particleSize, 0, Math.PI * 2);
                         ctx.fill();
@@ -961,16 +1478,68 @@
                     ctx.rotate(tilt * Math.PI / 180);
                     ctx.translate(-(obstacle.x + obstacle.width/2), -(obstacle.y + obstacle.height/2));
                     
-                    // Draw building base with gradient
+                    // Update blinking state
+                    if (obstacle.isBlinking) {
+                        obstacle.blinkTimer++;
+                        if (obstacle.blinkTimer >= 10) { // Blink every 10 frames
+                            obstacle.blinkState = !obstacle.blinkState;
+                            obstacle.blinkTimer = 0;
+                        }
+                        
+                        // Countdown to explosion
+                        obstacle.explosionTimer--;
+                        if (obstacle.explosionTimer <= 0) {
+                            createExplosion(
+                                obstacle.x + obstacle.width/2,
+                                obstacle.y + obstacle.height/2,
+                                obstacle.hue
+                            );
+                            
+                            // Check if car is within explosion radius
+                            const dx = car.x - (obstacle.x + obstacle.width/2);
+                            const dy = car.y - (obstacle.y + obstacle.height/2);
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            if (distance < explosionRadius) {
+                                createExplosion(car.x, car.y, hue);
+                                setTimeout(() => {
+                                    gameOver = true;
+                                    gameOverScreen.style.display = 'block';
+                                    setTimeout(() => {
+                                        gameOverScreen.classList.add('show');
+                                    }, 100);
+                                }, 500);
+                            }
+                            
+                            // Remove the building
+                            const index = obstacles.indexOf(obstacle);
+                            if (index > -1) {
+                                obstacles.splice(index, 1);
+                            }
+                            return;
+                        }
+                    }
+                    
+                    // Draw building base with modulated gradient
                     const buildingGradient = ctx.createLinearGradient(
                         obstacle.x,
                         obstacle.y,
                         obstacle.x,
                         obstacle.y + obstacle.height
                     );
-                    buildingGradient.addColorStop(0, `hsl(${obstacle.hue}, 100%, 30%)`);
-                    buildingGradient.addColorStop(0.5, `hsl(${(obstacle.hue + 60) % 360}, 100%, 20%)`);
-                    buildingGradient.addColorStop(1, `hsl(${obstacle.hue}, 100%, 10%)`);
+                    
+                    // Use contrasting colors for blinking buildings
+                    const currentHue = obstacle.isBlinking && obstacle.blinkState ? 
+                        obstacle.contrastHue : obstacle.originalHue;
+                    
+                    // Enhanced building colors with smooth boost transition
+                    const baseBrightness = 30;
+                    const boostBrightness = 50;
+                    const currentBrightness = baseBrightness + (boostIntensity * (boostBrightness - baseBrightness));
+                    
+                    buildingGradient.addColorStop(0, `hsl(${(currentHue + colorPhase) % 360}, 100%, ${currentBrightness}%)`);
+                    buildingGradient.addColorStop(0.5, `hsl(${(currentHue + colorPhase + 60) % 360}, 100%, ${currentBrightness - 10}%)`);
+                    buildingGradient.addColorStop(1, `hsl(${(currentHue + colorPhase) % 360}, 100%, ${currentBrightness - 20}%)`);
                     ctx.fillStyle = buildingGradient;
                     ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
                     
@@ -980,19 +1549,29 @@
                     const windowRows = Math.floor(obstacle.height / windowSpacing);
                     const windowCols = Math.floor(obstacle.width / windowSpacing);
                     
-                    // Draw windows
+                    // Draw windows with blinking effect
                     for (let row = 0; row < windowRows; row++) {
                         for (let col = 0; col < windowCols; col++) {
                             const windowX = obstacle.x + col * windowSpacing + (windowSpacing - windowSize) / 2;
                             const windowY = obstacle.y + row * windowSpacing + (windowSpacing - windowSize) / 2;
                             
-                            // Random window glow
-                            const glowIntensity = Math.random() * 0.8 + 0.2;
-                            ctx.fillStyle = `hsla(${(obstacle.hue + 120) % 360}, 100%, 70%, ${glowIntensity})`;
-                            ctx.shadowColor = `hsla(${(obstacle.hue + 120) % 360}, 100%, 50%, ${glowIntensity})`;
+                            // Random window glow with blinking effect
+                            const glowIntensity = obstacle.isBlinking && obstacle.blinkState ? 
+                                Math.random() * 0.8 + 0.2 : Math.random() * 0.4 + 0.1;
+                            ctx.fillStyle = `hsla(${(currentHue + colorPhase + 120) % 360}, 100%, 70%, ${glowIntensity})`;
+                            ctx.shadowColor = `hsla(${(currentHue + colorPhase + 120) % 360}, 100%, 50%, ${glowIntensity})`;
                             ctx.shadowBlur = 5;
                             ctx.fillRect(windowX, windowY, windowSize, windowSize);
                         }
+                    }
+                    
+                    // Add warning effect for buildings about to explode
+                    if (obstacle.isBlinking && obstacle.explosionTimer < 60) {
+                        const warningSize = obstacle.explosionTimer / 2;
+                        ctx.fillStyle = `hsla(${(currentHue + colorPhase + 180) % 360}, 100%, 70%, ${0.5 + Math.sin(Date.now() / 100) * 0.5})`;
+                        ctx.beginPath();
+                        ctx.arc(obstacle.x + obstacle.width/2, obstacle.y - 20, warningSize, 0, Math.PI * 2);
+                        ctx.fill();
                     }
                     
                     // Add building edges with glow
@@ -1024,7 +1603,7 @@
                         ctx.beginPath();
                         ctx.moveTo(obstacle.x, detailY);
                         ctx.lineTo(obstacle.x + obstacle.width, detailY);
-                        ctx.strokeStyle = `hsla(${(obstacle.hue + 180) % 360}, 100%, 50%, 0.5)`;
+                        ctx.strokeStyle = `hsla(${(obstacle.hue + colorPhase + 180) % 360}, 100%, 50%, 0.5)`;
                         ctx.lineWidth = 1;
                         ctx.stroke();
                     }
@@ -1034,12 +1613,12 @@
                     ctx.beginPath();
                     ctx.moveTo(obstacle.x + obstacle.width/2, obstacle.y);
                     ctx.lineTo(obstacle.x + obstacle.width/2, obstacle.y - spireHeight);
-                    ctx.strokeStyle = `hsl(${(obstacle.hue + 60) % 360}, 100%, 70%)`;
+                    ctx.strokeStyle = `hsl(${(obstacle.hue + colorPhase + 60) % 360}, 100%, 70%)`;
                     ctx.lineWidth = 2;
                     ctx.stroke();
                     
                     // Add spire glow
-                    ctx.fillStyle = `hsl(${(obstacle.hue + 60) % 360}, 100%, 50%)`;
+                    ctx.fillStyle = `hsl(${(obstacle.hue + colorPhase + 60) % 360}, 100%, 50%)`;
                     ctx.beginPath();
                     ctx.arc(obstacle.x + obstacle.width/2, obstacle.y - spireHeight, 3, 0, Math.PI * 2);
                     ctx.fill();
@@ -1048,39 +1627,60 @@
                 });
             }
 
-            // Check collisions
-            function checkCollisions() {
-                // Check track boundaries
-                const currentSegment = trackSegments.find(segment => 
-                    segment.y <= car.y && segment.y + segmentHeight > car.y
-                );
-                
-                if (currentSegment) {
-                    const trackX = canvas.width / 2 + currentSegment.offset;
-                    const trackLeft = trackX - trackWidth/2;
-                    const trackRight = trackX + trackWidth/2;
+            // Add new function for speed lines
+            function createSpeedLine() {
+                if (speedLines.length < maxSpeedLines) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = Math.random() * canvas.width;
+                    const x = car.x + Math.cos(angle) * distance;
+                    const y = car.y + Math.sin(angle) * distance;
                     
-                    // Check left barrier collision
-                    if (car.x - car.width/2 < trackLeft + 20) {
-                        car.x = trackLeft + 20 + car.width/2;
-                        car.velocity = -car.velocity * 0.5; // Bounce off with reduced velocity
-                        return false;
-                    }
-                    
-                    // Check right barrier collision
-                    if (car.x + car.width/2 > trackRight - 20) {
-                        car.x = trackRight - 20 - car.width/2;
-                        car.velocity = -car.velocity * 0.5; // Bounce off with reduced velocity
-                        return false;
+                    speedLines.push({
+                        x: x,
+                        y: y,
+                        angle: angle,
+                        length: speedLineLength,
+                        opacity: Math.random() * 0.5 + 0.5,
+                        hue: (hue + Math.random() * 60) % 360
+                    });
+                }
+            }
+
+            function updateSpeedLines() {
+                // Remove old lines
+                for (let i = speedLines.length - 1; i >= 0; i--) {
+                    speedLines[i].length -= 10;
+                    if (speedLines[i].length <= 0) {
+                        speedLines.splice(i, 1);
                     }
                 }
+                
+                // Create new lines during boost
+                if (isBoosting && Math.random() < 0.3) {
+                    createSpeedLine();
+                }
+            }
 
-                // Check obstacle collisions
-                return obstacles.some(obstacle => {
-                    return car.x + car.width / 2 > obstacle.x &&
-                           car.x - car.width / 2 < obstacle.x + obstacle.width &&
-                           car.y + car.height / 2 > obstacle.y &&
-                           car.y - car.height / 2 < obstacle.y + obstacle.height;
+            function drawSpeedLines() {
+                if (!isBoosting) return;
+                
+                speedLines.forEach(line => {
+                    const endX = line.x + Math.cos(line.angle) * line.length;
+                    const endY = line.y + Math.sin(line.angle) * line.length;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(line.x, line.y);
+                    ctx.lineTo(endX, endY);
+                    
+                    // Create gradient for the line
+                    const gradient = ctx.createLinearGradient(line.x, line.y, endX, endY);
+                    gradient.addColorStop(0, `hsla(${line.hue}, 100%, 80%, ${line.opacity})`);
+                    gradient.addColorStop(1, `hsla(${line.hue}, 100%, 80%, 0)`);
+                    
+                    ctx.strokeStyle = gradient;
+                    ctx.lineWidth = speedLineWidth;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
                 });
             }
 
@@ -1112,22 +1712,18 @@
             function handleInput() {
                 const baseMaxVelocity = 15;
                 const boostMultiplier = 2.5;
-                const maxVelocity = isBoosting ? baseMaxVelocity * boostMultiplier : baseMaxVelocity;
-                const acceleration = isBoosting ? 1.2 : 0.6;
-                const deceleration = isBoosting ? 0.8 : 0.4;
+                const maxVelocity = (isBoosting ? baseMaxVelocity * boostMultiplier : baseMaxVelocity) * speedMultiplier;
+                const acceleration = (isBoosting ? 1.2 : 0.6) * speedMultiplier;
+                const deceleration = (isBoosting ? 0.8 : 0.4) * speedMultiplier;
                 const driftThreshold = 1.0;
                 const maxDriftAngle = 25;
                 const trackFollowSpeed = 0.08;
 
-                // Handle boost input
+                // Handle boost input - removed transform changes
                 if ((keys['Shift'] || keys[' ']) && hyperfuel > 0) {
                     isBoosting = true;
-                    // Only change scale and angle during boost
-                    gameContainer.style.transform = `rotateX(20deg) rotateY(${tilt}deg) scale(0.9)`;
                 } else {
                     isBoosting = false;
-                    // Return to normal scale and angle
-                    gameContainer.style.transform = `rotateX(30deg) rotateY(${tilt}deg) scale(1)`;
                 }
 
                 // Find the current track segment the car is on
@@ -1206,8 +1802,10 @@
                 score = 0;
                 hyperfuel = 100;
                 isBoosting = false;
+                stillnessMeter = 0;
                 scoreElement.innerHTML = `Score: ${score}<br>Hyperfuel: ${Math.floor(hyperfuel)}%`;
                 gameOverScreen.style.display = 'none';
+                gameOverScreen.classList.remove('show');
                 pauseMenu.style.display = 'none';
                 canvas.classList.remove('blur');
                 car.x = canvas.width / 2;
@@ -1223,6 +1821,9 @@
             startButton.addEventListener('click', () => {
                 gameStarted = true;
                 startScreen.style.display = 'none';
+                scoreElement.classList.add('show');
+                document.getElementById('hyperfuelGauge').classList.add('show');
+                document.getElementById('stillnessMeter').classList.add('show');
                 initTrack();
                 gameLoop();
             });
