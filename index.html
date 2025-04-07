@@ -200,7 +200,12 @@
                 width: 50,
                 height: 80,
                 speed: 8,
-                z: 0
+                z: 0,
+                velocity: 0,
+                rotation: 0,
+                drift: false,
+                driftAngle: 0,
+                driftPower: 0
             };
 
             // Track segments
@@ -428,7 +433,7 @@
                 ctx.save();
                 ctx.translate(car.x, car.y);
                 ctx.scale(scale, scale);
-                ctx.rotate(tilt * Math.PI / 180);
+                ctx.rotate((tilt + car.driftAngle) * Math.PI / 180);
                 ctx.translate(-car.x, -car.y);
                 
                 // Main body with advanced gradient
@@ -594,6 +599,41 @@
                 ctx.closePath();
                 ctx.fill();
                 
+                // Add drift effects
+                if (car.drift) {
+                    // Drift smoke
+                    const driftIntensity = Math.abs(car.velocity) / 10;
+                    for (let i = 0; i < 3; i++) {
+                        const smokeX = car.x + (Math.random() - 0.5) * 20;
+                        const smokeY = car.y - car.height/2 - Math.random() * 20;
+                        const smokeSize = Math.random() * 10 + 5;
+                        const smokeOpacity = Math.random() * 0.3 + 0.1;
+                        
+                        ctx.fillStyle = `hsla(${(hue + 180) % 360}, 100%, 50%, ${smokeOpacity})`;
+                        ctx.shadowColor = `hsla(${(hue + 180) % 360}, 100%, 50%, ${smokeOpacity})`;
+                        ctx.shadowBlur = 10;
+                        ctx.beginPath();
+                        ctx.arc(smokeX, smokeY, smokeSize, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Drift trail
+                    const trailGradient = ctx.createLinearGradient(
+                        car.x - car.width/2, car.y - car.height/2,
+                        car.x - car.width/2, car.y - car.height/2 - 30
+                    );
+                    trailGradient.addColorStop(0, `hsla(${(hue + 60) % 360}, 100%, 70%, ${driftIntensity})`);
+                    trailGradient.addColorStop(1, `hsla(${(hue + 60) % 360}, 100%, 70%, 0)`);
+                    
+                    ctx.fillStyle = trailGradient;
+                    ctx.beginPath();
+                    ctx.moveTo(car.x - car.width/3, car.y - car.height/2);
+                    ctx.lineTo(car.x + car.width/3, car.y - car.height/2);
+                    ctx.lineTo(car.x, car.y - car.height/2 - 30);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                
                 ctx.restore();
             }
 
@@ -732,12 +772,46 @@
 
             // Update car position based on input
             function handleInput() {
+                const maxVelocity = 10;
+                const acceleration = 0.5;
+                const deceleration = 0.3;
+                const driftThreshold = 0.5;
+                const maxDriftAngle = 30;
+
+                // Handle left/right movement
                 if (keys['ArrowLeft'] || keys['a']) {
-                    car.x = Math.max(car.width / 2, car.x - car.speed);
+                    car.velocity = Math.max(-maxVelocity, car.velocity - acceleration);
+                    if (Math.abs(car.velocity) > driftThreshold) {
+                        car.drift = true;
+                        car.driftAngle = Math.min(maxDriftAngle, car.driftAngle + 2);
+                    }
+                } else if (keys['ArrowRight'] || keys['d']) {
+                    car.velocity = Math.min(maxVelocity, car.velocity + acceleration);
+                    if (Math.abs(car.velocity) > driftThreshold) {
+                        car.drift = true;
+                        car.driftAngle = Math.max(-maxDriftAngle, car.driftAngle - 2);
+                    }
+                } else {
+                    // Decelerate when no input
+                    if (car.velocity > 0) {
+                        car.velocity = Math.max(0, car.velocity - deceleration);
+                    } else if (car.velocity < 0) {
+                        car.velocity = Math.min(0, car.velocity + deceleration);
+                    }
+                    
+                    // Reduce drift angle when not actively drifting
+                    if (Math.abs(car.driftAngle) > 0) {
+                        car.driftAngle *= 0.95;
+                        if (Math.abs(car.driftAngle) < 0.1) {
+                            car.driftAngle = 0;
+                            car.drift = false;
+                        }
+                    }
                 }
-                if (keys['ArrowRight'] || keys['d']) {
-                    car.x = Math.min(canvas.width - car.width / 2, car.x + car.speed);
-                }
+
+                // Update car position with momentum
+                car.x += car.velocity;
+                car.x = Math.max(car.width / 2, Math.min(canvas.width - car.width / 2, car.x));
             }
 
             // Toggle pause state
