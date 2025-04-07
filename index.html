@@ -193,18 +193,13 @@
             let tilt = 0;
             let isPaused = false;
 
-            // Particle system
-            const particles = [];
-            const maxParticles = 30;
-            const particleSpeed = 0.5;
-
             // Player car
             const car = {
                 x: canvas.width / 2,
                 y: canvas.height - 100,
                 width: 50,
                 height: 80,
-                speed: 5,
+                speed: 8,
                 z: 0
             };
 
@@ -226,7 +221,7 @@
                 for (let i = 0; i < maxSegments; i++) {
                     trackSegments.push({
                         y: i * segmentHeight,
-                        offset: Math.random() * 100 - 50,
+                        offset: Math.sin(i * 0.5) * 50, // Smoother initial curve
                         z: i * 20,
                         hue: (hue + i * 30) % 360
                     });
@@ -245,107 +240,107 @@
                 });
             }
 
-            // Initialize particles
-            function initParticles() {
-                particles.length = 0;
-                for (let i = 0; i < maxParticles; i++) {
-                    particles.push({
-                        x: Math.random() * canvas.width,
-                        y: Math.random() * canvas.height,
-                        size: Math.random() * 3 + 2,
-                        hue: Math.random() * 360,
-                        speed: Math.random() * particleSpeed + particleSpeed,
-                        z: Math.random() * 100
-                    });
+            // Update game state
+            function update() {
+                if (gameOver || isPaused) return;
+                
+                // Update segment positions and properties
+                trackSegments.forEach(segment => {
+                    segment.y += 4;
+                    segment.hue = (segment.hue + 0.5) % 360;
+                    
+                    // Smoothly update offset using a continuous sine wave
+                    const targetOffset = Math.sin((segment.y) / 100) * 50;
+                    segment.offset += (targetOffset - segment.offset) * 0.1;
+                    
+                    // Reset segment position when it goes off screen
+                    if (segment.y > canvas.height) {
+                        segment.y = -segmentHeight;
+                        segment.z = 0;
+                        // Maintain smooth curve by using the last segment's offset as reference
+                        const lastSegment = trackSegments[trackSegments.length - 1];
+                        segment.offset = lastSegment.offset;
+                        segment.hue = (lastSegment.hue + 30) % 360;
+                    }
+                });
+
+                // Move obstacles
+                obstacles.forEach(obstacle => {
+                    obstacle.y += 6;
+                    obstacle.z += 0.4;
+                    obstacle.hue = (obstacle.hue + 1) % 360;
+                });
+
+                // Remove off-screen obstacles
+                obstacles.forEach((obstacle, index) => {
+                    if (obstacle.y > canvas.height) {
+                        obstacles.splice(index, 1);
+                        score += 10;
+                        scoreElement.textContent = `Score: ${score}`;
+                    }
+                });
+
+                // Create new obstacles
+                if (Math.random() < 0.02) {
+                    createObstacle();
+                }
+
+                // Update container tilt based on car position
+                const targetTilt = ((car.x - canvas.width/2) / (canvas.width/2)) * 10;
+                tilt += (targetTilt - tilt) * 0.1;
+                gameContainer.style.transform = `rotateX(30deg) rotateY(${tilt}deg)`;
+
+                // Check collisions
+                if (checkCollisions()) {
+                    gameOver = true;
+                    gameOverScreen.style.display = 'block';
                 }
             }
 
-            // Update particles
-            function updateParticles() {
-                particles.forEach(particle => {
-                    particle.y += particle.speed;
-                    particle.hue = (particle.hue + 0.5) % 360;
-                    
-                    if (particle.y > canvas.height) {
-                        particle.y = -particle.size;
-                        particle.x = Math.random() * canvas.width;
-                    }
-                });
-            }
-
-            // Draw particles
-            function drawParticles() {
-                particles.forEach(particle => {
-                    const scale = 1 + (particle.z / 800);
-                    
-                    // Main particle
-                    ctx.fillStyle = `hsl(${particle.hue}, 100%, 70%)`;
-                    ctx.shadowColor = `hsl(${particle.hue}, 100%, 50%)`;
-                    ctx.shadowBlur = 15;
-                    ctx.beginPath();
-                    ctx.arc(particle.x, particle.y, particle.size * scale, 0, Math.PI * 2);
-                    ctx.fill();
-                    
-                    // Bloom effect
-                    for (let j = 1; j <= 3; j++) {
-                        const bloomSize = particle.size * (1 + j * 0.5) * scale;
-                        const bloomOpacity = 0.3 / j;
-                        ctx.fillStyle = `hsla(${particle.hue}, 100%, 70%, ${bloomOpacity})`;
-                        ctx.shadowColor = `hsla(${particle.hue}, 100%, 50%, ${bloomOpacity})`;
-                        ctx.shadowBlur = 10 + j * 5;
-                        ctx.beginPath();
-                        ctx.arc(particle.x, particle.y, bloomSize, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                    
-                    // Motion blur
-                    const blurLength = particle.size * 2 * scale;
-                    const blurGradient = ctx.createLinearGradient(
-                        particle.x, particle.y,
-                        particle.x, particle.y - blurLength
-                    );
-                    blurGradient.addColorStop(0, `hsla(${particle.hue}, 100%, 70%, 0.3)`);
-                    blurGradient.addColorStop(1, `hsla(${particle.hue}, 100%, 70%, 0)`);
-                    ctx.fillStyle = blurGradient;
-                    ctx.beginPath();
-                    ctx.arc(particle.x, particle.y, particle.size * scale, 0, Math.PI * 2);
-                    ctx.fill();
-                });
+            // Draw everything
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawBackground();
+                drawTrack();
+                drawObstacles();
+                drawCar();
             }
 
             // Draw psychedelic background
             function drawBackground() {
-                hue = (hue + 0.5) % 360;
+                hue = (hue + 0.2) % 360; // Slower color transition
                 const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-                gradient.addColorStop(0, `hsl(${hue}, 100%, 50%)`);
-                gradient.addColorStop(0.5, `hsl(${(hue + 120) % 360}, 100%, 50%)`);
-                gradient.addColorStop(1, `hsl(${(hue + 240) % 360}, 100%, 50%)`);
+                gradient.addColorStop(0, `hsla(${hue}, 100%, 50%, 0.3)`); // More transparent
+                gradient.addColorStop(0.5, `hsla(${(hue + 120) % 360}, 100%, 50%, 0.2)`);
+                gradient.addColorStop(1, `hsla(${(hue + 240) % 360}, 100%, 50%, 0.3)`);
                 
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                // Add some psychedelic patterns
-                for (let i = 0; i < 5; i++) {
+                // Add subtle noise effect instead of large circles
+                for (let i = 0; i < 100; i++) {
+                    const x = Math.random() * canvas.width;
+                    const y = Math.random() * canvas.height;
+                    const size = Math.random() * 2 + 1; // Very small dots
+                    const opacity = Math.random() * 0.1; // Very subtle
+                    
+                    ctx.fillStyle = `hsla(${(hue + i * 3.6) % 360}, 100%, 50%, ${opacity})`;
                     ctx.beginPath();
-                    ctx.arc(
-                        Math.random() * canvas.width,
-                        Math.random() * canvas.height,
-                        Math.random() * 100,
-                        0,
-                        Math.PI * 2
-                    );
-                    ctx.fillStyle = `hsla(${(hue + i * 72) % 360}, 100%, 50%, 0.2)`;
+                    ctx.arc(x, y, size, 0, Math.PI * 2);
                     ctx.fill();
                 }
             }
 
             // Draw track with 3D effect
             function drawTrack() {
+                // Draw segments that are visible on screen
                 trackSegments.forEach(segment => {
-                    const y = (segment.y + trackOffset) % (maxSegments * segmentHeight);
+                    const y = segment.y;
+                    if (y < -segmentHeight || y > canvas.height) return; // Skip off-screen segments
+                    
                     const x = canvas.width / 2 + segment.offset - trackWidth / 2;
                     const scale = 1 + (segment.z / 800);
-                    const tilt = Math.sin((y + trackOffset) / 50) * 10;
+                    const tilt = Math.sin(y / 50) * 10;
                     
                     ctx.save();
                     ctx.translate(x + trackWidth/2, y + segmentHeight/2);
@@ -711,67 +706,6 @@
                 });
             }
 
-            // Update game state
-            function update() {
-                if (gameOver || isPaused) return;
-
-                updateParticles();
-                // Move track
-                trackOffset += 2;
-                
-                // Update segment positions and properties
-                trackSegments.forEach(segment => {
-                    segment.y = (segment.y + 2) % (maxSegments * segmentHeight);
-                    segment.hue = (segment.hue + 0.5) % 360;
-                    
-                    // Smoothly update offset
-                    const targetOffset = Math.sin((segment.y + trackOffset) / 100) * 50;
-                    segment.offset += (targetOffset - segment.offset) * 0.1;
-                });
-
-                // Move obstacles
-                obstacles.forEach(obstacle => {
-                    obstacle.y += 3;
-                    obstacle.z += 0.2;
-                    obstacle.hue = (obstacle.hue + 1) % 360;
-                });
-
-                // Remove off-screen obstacles
-                obstacles.forEach((obstacle, index) => {
-                    if (obstacle.y > canvas.height) {
-                        obstacles.splice(index, 1);
-                        score += 10;
-                        scoreElement.textContent = `Score: ${score}`;
-                    }
-                });
-
-                // Create new obstacles
-                if (Math.random() < 0.02) {
-                    createObstacle();
-                }
-
-                // Update container tilt based on car position
-                const targetTilt = ((car.x - canvas.width/2) / (canvas.width/2)) * 10;
-                tilt += (targetTilt - tilt) * 0.1;
-                gameContainer.style.transform = `rotateX(30deg) rotateY(${tilt}deg)`;
-
-                // Check collisions
-                if (checkCollisions()) {
-                    gameOver = true;
-                    gameOverScreen.style.display = 'block';
-                }
-            }
-
-            // Draw everything
-            function draw() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawBackground();
-                drawTrack();
-                drawParticles();
-                drawObstacles();
-                drawCar();
-            }
-
             // Game loop
             function gameLoop() {
                 if (!isPaused) {
@@ -836,7 +770,6 @@
                 obstacles.length = 0;
                 trackSegments.length = 0;
                 initTrack();
-                initParticles();
             }
 
             // Start game
@@ -844,7 +777,6 @@
                 gameStarted = true;
                 startScreen.style.display = 'none';
                 initTrack();
-                initParticles();
                 gameLoop();
             });
 
