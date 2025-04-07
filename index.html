@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Psychedelic Racer</title>
+    <title>Psychedelic Racer 3D</title>
     <style>
         body {
             margin: 0;
@@ -14,11 +14,25 @@
             align-items: center;
             height: 100vh;
             font-family: Arial, sans-serif;
+            perspective: 800px;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            transform-style: preserve-3d;
+            transform: rotateX(30deg) rotateY(0deg);
+            transition: transform 0.1s;
         }
 
         #gameCanvas {
             border: 2px solid #fff;
             background: #000;
+            transform-style: preserve-3d;
+            transform: translateZ(0);
+            box-shadow: 0 0 50px rgba(255, 0, 255, 0.5);
+            display: block;
         }
 
         #gameOver {
@@ -28,6 +42,18 @@
             text-align: center;
             display: none;
             text-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff;
+            transform: translateZ(200px);
+            animation: pulse 2s infinite;
+            width: 100%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) translateZ(200px);
+        }
+
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) translateZ(200px) scale(1); }
+            50% { transform: translate(-50%, -50%) translateZ(200px) scale(1.1); }
+            100% { transform: translate(-50%, -50%) translateZ(200px) scale(1); }
         }
 
         #score {
@@ -37,6 +63,8 @@
             color: #fff;
             font-size: 24px;
             text-shadow: 0 0 5px #ff00ff, 0 0 10px #00ffff;
+            transform: translateZ(200px);
+            z-index: 10;
         }
 
         #startScreen {
@@ -44,6 +72,11 @@
             color: #fff;
             text-align: center;
             text-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff;
+            transform: translateZ(200px);
+            width: 100%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) translateZ(200px);
         }
 
         #startButton {
@@ -55,248 +88,779 @@
             border-radius: 25px;
             cursor: pointer;
             margin-top: 20px;
-            transition: transform 0.3s;
+            transition: all 0.3s;
+            transform: translateZ(200px);
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
         }
 
         #startButton:hover {
-            transform: scale(1.1);
+            transform: translateZ(200px) scale(1.1);
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.8);
+        }
+
+        .road-line {
+            position: absolute;
+            background: #fff;
+            width: 10px;
+            height: 50px;
+            transform-style: preserve-3d;
+            box-shadow: 0 0 10px #fff;
+        }
+
+        #pauseMenu {
+            position: absolute;
+            color: #fff;
+            text-align: center;
+            display: none;
+            text-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff;
+            width: 100%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) translateZ(200px);
+            z-index: 20;
+            filter: none !important;
+        }
+
+        #resumeButton {
+            background: linear-gradient(45deg, #ff00ff, #00ffff);
+            border: none;
+            padding: 15px 30px;
+            font-size: 24px;
+            color: white;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s;
+            transform: translateZ(200px);
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
+        }
+
+        #resumeButton:hover {
+            transform: translateZ(200px) scale(1.1);
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.8);
+        }
+
+        .blur {
+            filter: blur(5px);
+        }
+
+        #gameCanvas.blur {
+            filter: blur(5px);
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
-    <div id="score">Score: 0</div>
-    <div id="gameOver">GAME OVER<br>Press R to restart</div>
-    <div id="startScreen">
-        <h1>PSYCHEDELIC RACER</h1>
-        <p>Use arrow keys or WASD to move</p>
-        <button id="startButton">START GAME</button>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="score">Score: 0</div>
+        <div id="gameOver">GAME OVER<br>Press R to restart</div>
+        <div id="startScreen">
+            <h1>PSYCHEDELIC RACER 3D</h1>
+            <p>Use arrow keys or WASD to move</p>
+            <button id="startButton">START GAME</button>
+        </div>
+        <div id="pauseMenu">
+            <h1>PAUSED</h1>
+            <p>Press ESC to resume</p>
+            <button id="resumeButton">RESUME</button>
+        </div>
     </div>
 
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const gameOverScreen = document.getElementById('gameOver');
-        const scoreElement = document.getElementById('score');
-        const startScreen = document.getElementById('startScreen');
-        const startButton = document.getElementById('startButton');
+        // Wait for DOM to be fully loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const gameOverScreen = document.getElementById('gameOver');
+            const scoreElement = document.getElementById('score');
+            const startScreen = document.getElementById('startScreen');
+            const startButton = document.getElementById('startButton');
+            const gameContainer = document.getElementById('gameContainer');
+            const pauseMenu = document.getElementById('pauseMenu');
+            const resumeButton = document.getElementById('resumeButton');
 
-        // Set canvas size
-        canvas.width = 800;
-        canvas.height = 600;
+            // Set canvas size
+            canvas.width = 800;
+            canvas.height = 600;
 
-        // Game variables
-        let gameStarted = false;
-        let gameOver = false;
-        let score = 0;
-        let animationFrame;
-        let hue = 0;
+            // Game variables
+            let gameStarted = false;
+            let gameOver = false;
+            let score = 0;
+            let animationFrame;
+            let hue = 0;
+            let roadLines = [];
+            let tilt = 0;
+            let isPaused = false;
 
-        // Player car
-        const car = {
-            x: canvas.width / 2,
-            y: canvas.height - 100,
-            width: 50,
-            height: 80,
-            speed: 5
-        };
+            // Particle system
+            const particles = [];
+            const maxParticles = 30;
+            const particleSpeed = 0.5;
 
-        // Track segments
-        const trackSegments = [];
-        const segmentHeight = 50;
-        const trackWidth = 300;
-        let trackOffset = 0;
+            // Player car
+            const car = {
+                x: canvas.width / 2,
+                y: canvas.height - 100,
+                width: 50,
+                height: 80,
+                speed: 5,
+                z: 0
+            };
 
-        // Obstacles
-        const obstacles = [];
-        const obstacleWidth = 50;
-        const obstacleHeight = 50;
+            // Track segments
+            const trackSegments = [];
+            const segmentHeight = 50;
+            const trackWidth = 300;
+            let trackOffset = 0;
+            const maxSegments = Math.ceil(canvas.height / segmentHeight) + 2;
 
-        // Initialize track
-        function initTrack() {
-            for (let i = 0; i < canvas.height / segmentHeight + 2; i++) {
-                trackSegments.push({
-                    y: i * segmentHeight,
-                    offset: Math.random() * 100 - 50
-                });
-            }
-        }
+            // Obstacles
+            const obstacles = [];
+            const obstacleWidth = 50;
+            const obstacleHeight = 50;
 
-        // Create new obstacle
-        function createObstacle() {
-            obstacles.push({
-                x: Math.random() * (canvas.width - obstacleWidth),
-                y: -obstacleHeight,
-                width: obstacleWidth,
-                height: obstacleHeight
-            });
-        }
-
-        // Draw psychedelic background
-        function drawBackground() {
-            hue = (hue + 0.5) % 360;
-            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-            gradient.addColorStop(0, `hsl(${hue}, 100%, 50%)`);
-            gradient.addColorStop(0.5, `hsl(${(hue + 120) % 360}, 100%, 50%)`);
-            gradient.addColorStop(1, `hsl(${(hue + 240) % 360}, 100%, 50%)`);
-            
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-
-        // Draw track
-        function drawTrack() {
-            trackSegments.forEach(segment => {
-                const y = (segment.y + trackOffset) % canvas.height;
-                const x = canvas.width / 2 + segment.offset - trackWidth / 2;
-                
-                // Draw track segment
-                ctx.fillStyle = '#333';
-                ctx.fillRect(x, y, trackWidth, segmentHeight);
-                
-                // Draw track borders
-                ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 3;
-                ctx.strokeRect(x, y, trackWidth, segmentHeight);
-            });
-        }
-
-        // Draw car
-        function drawCar() {
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(car.x - car.width / 2, car.y - car.height / 2, car.width, car.height);
-            
-            // Add some car details
-            ctx.fillStyle = '#ff00ff';
-            ctx.fillRect(car.x - car.width / 2 + 5, car.y - car.height / 2 + 5, car.width - 10, car.height - 10);
-        }
-
-        // Draw obstacles
-        function drawObstacles() {
-            obstacles.forEach(obstacle => {
-                ctx.fillStyle = '#ff0000';
-                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-            });
-        }
-
-        // Check collisions
-        function checkCollisions() {
-            return obstacles.some(obstacle => {
-                return car.x + car.width / 2 > obstacle.x &&
-                       car.x - car.width / 2 < obstacle.x + obstacle.width &&
-                       car.y + car.height / 2 > obstacle.y &&
-                       car.y - car.height / 2 < obstacle.y + obstacle.height;
-            });
-        }
-
-        // Update game state
-        function update() {
-            if (gameOver) return;
-
-            // Move track
-            trackOffset += 2;
-            if (trackOffset >= segmentHeight) {
-                trackOffset = 0;
-                trackSegments.push({
-                    y: trackSegments[trackSegments.length - 1].y + segmentHeight,
-                    offset: Math.random() * 100 - 50
-                });
-                trackSegments.shift();
-            }
-
-            // Move obstacles
-            obstacles.forEach(obstacle => {
-                obstacle.y += 3;
-            });
-
-            // Remove off-screen obstacles
-            obstacles.forEach((obstacle, index) => {
-                if (obstacle.y > canvas.height) {
-                    obstacles.splice(index, 1);
-                    score += 10;
-                    scoreElement.textContent = `Score: ${score}`;
+            // Initialize track
+            function initTrack() {
+                trackSegments.length = 0;
+                for (let i = 0; i < maxSegments; i++) {
+                    trackSegments.push({
+                        y: i * segmentHeight,
+                        offset: Math.random() * 100 - 50,
+                        z: i * 20,
+                        hue: (hue + i * 30) % 360
+                    });
                 }
-            });
+            }
 
-            // Create new obstacles
-            if (Math.random() < 0.02) {
-                createObstacle();
+            // Create new obstacle
+            function createObstacle() {
+                obstacles.push({
+                    x: Math.random() * (canvas.width - obstacleWidth),
+                    y: -obstacleHeight,
+                    width: obstacleWidth,
+                    height: obstacleHeight,
+                    z: 0,
+                    hue: (hue + Math.random() * 360) % 360
+                });
+            }
+
+            // Initialize particles
+            function initParticles() {
+                particles.length = 0;
+                for (let i = 0; i < maxParticles; i++) {
+                    particles.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        size: Math.random() * 3 + 2,
+                        hue: Math.random() * 360,
+                        speed: Math.random() * particleSpeed + particleSpeed,
+                        z: Math.random() * 100
+                    });
+                }
+            }
+
+            // Update particles
+            function updateParticles() {
+                particles.forEach(particle => {
+                    particle.y += particle.speed;
+                    particle.hue = (particle.hue + 0.5) % 360;
+                    
+                    if (particle.y > canvas.height) {
+                        particle.y = -particle.size;
+                        particle.x = Math.random() * canvas.width;
+                    }
+                });
+            }
+
+            // Draw particles
+            function drawParticles() {
+                particles.forEach(particle => {
+                    const scale = 1 + (particle.z / 800);
+                    
+                    // Main particle
+                    ctx.fillStyle = `hsl(${particle.hue}, 100%, 70%)`;
+                    ctx.shadowColor = `hsl(${particle.hue}, 100%, 50%)`;
+                    ctx.shadowBlur = 15;
+                    ctx.beginPath();
+                    ctx.arc(particle.x, particle.y, particle.size * scale, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Bloom effect
+                    for (let j = 1; j <= 3; j++) {
+                        const bloomSize = particle.size * (1 + j * 0.5) * scale;
+                        const bloomOpacity = 0.3 / j;
+                        ctx.fillStyle = `hsla(${particle.hue}, 100%, 70%, ${bloomOpacity})`;
+                        ctx.shadowColor = `hsla(${particle.hue}, 100%, 50%, ${bloomOpacity})`;
+                        ctx.shadowBlur = 10 + j * 5;
+                        ctx.beginPath();
+                        ctx.arc(particle.x, particle.y, bloomSize, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    // Motion blur
+                    const blurLength = particle.size * 2 * scale;
+                    const blurGradient = ctx.createLinearGradient(
+                        particle.x, particle.y,
+                        particle.x, particle.y - blurLength
+                    );
+                    blurGradient.addColorStop(0, `hsla(${particle.hue}, 100%, 70%, 0.3)`);
+                    blurGradient.addColorStop(1, `hsla(${particle.hue}, 100%, 70%, 0)`);
+                    ctx.fillStyle = blurGradient;
+                    ctx.beginPath();
+                    ctx.arc(particle.x, particle.y, particle.size * scale, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            // Draw psychedelic background
+            function drawBackground() {
+                hue = (hue + 0.5) % 360;
+                const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                gradient.addColorStop(0, `hsl(${hue}, 100%, 50%)`);
+                gradient.addColorStop(0.5, `hsl(${(hue + 120) % 360}, 100%, 50%)`);
+                gradient.addColorStop(1, `hsl(${(hue + 240) % 360}, 100%, 50%)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Add some psychedelic patterns
+                for (let i = 0; i < 5; i++) {
+                    ctx.beginPath();
+                    ctx.arc(
+                        Math.random() * canvas.width,
+                        Math.random() * canvas.height,
+                        Math.random() * 100,
+                        0,
+                        Math.PI * 2
+                    );
+                    ctx.fillStyle = `hsla(${(hue + i * 72) % 360}, 100%, 50%, 0.2)`;
+                    ctx.fill();
+                }
+            }
+
+            // Draw track with 3D effect
+            function drawTrack() {
+                trackSegments.forEach(segment => {
+                    const y = (segment.y + trackOffset) % (maxSegments * segmentHeight);
+                    const x = canvas.width / 2 + segment.offset - trackWidth / 2;
+                    const scale = 1 + (segment.z / 800);
+                    const tilt = Math.sin((y + trackOffset) / 50) * 10;
+                    
+                    ctx.save();
+                    ctx.translate(x + trackWidth/2, y + segmentHeight/2);
+                    ctx.scale(scale, scale);
+                    ctx.rotate(tilt * Math.PI / 180);
+                    ctx.translate(-(x + trackWidth/2), -(y + segmentHeight/2));
+                    
+                    // Draw track base with gradient
+                    const trackGradient = ctx.createLinearGradient(x, y, x, y + segmentHeight);
+                    trackGradient.addColorStop(0, `hsla(${segment.hue}, 100%, 20%, 0.8)`);
+                    trackGradient.addColorStop(0.5, `hsla(${(segment.hue + 60) % 360}, 100%, 30%, 0.8)`);
+                    trackGradient.addColorStop(1, `hsla(${segment.hue}, 100%, 20%, 0.8)`);
+                    ctx.fillStyle = trackGradient;
+                    ctx.fillRect(x, y, trackWidth, segmentHeight);
+                    
+                    // Draw track borders with glow
+                    ctx.shadowColor = `hsl(${segment.hue}, 100%, 50%)`;
+                    ctx.shadowBlur = 15;
+                    ctx.strokeStyle = `hsl(${segment.hue}, 100%, 70%)`;
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(x, y, trackWidth, segmentHeight);
+                    
+                    // Draw center line with animation
+                    const centerLineWidth = 5;
+                    const centerLineOffset = Math.sin((y + trackOffset) / 20) * 10;
+                    ctx.fillStyle = `hsl(${(segment.hue + 120) % 360}, 100%, 70%)`;
+                    ctx.shadowColor = `hsl(${(segment.hue + 120) % 360}, 100%, 50%)`;
+                    ctx.shadowBlur = 10;
+                    ctx.fillRect(
+                        x + trackWidth/2 - centerLineWidth/2 + centerLineOffset,
+                        y,
+                        centerLineWidth,
+                        segmentHeight
+                    );
+                    
+                    // Draw side lines with animation
+                    const sideLineWidth = 3;
+                    const sideLineOffset = Math.sin((y + trackOffset) / 30) * 5;
+                    ctx.fillStyle = `hsl(${(segment.hue + 180) % 360}, 100%, 70%)`;
+                    ctx.shadowColor = `hsl(${(segment.hue + 180) % 360}, 100%, 50%)`;
+                    ctx.shadowBlur = 8;
+                    
+                    // Left side line
+                    ctx.fillRect(
+                        x + trackWidth/4 - sideLineWidth/2 + sideLineOffset,
+                        y,
+                        sideLineWidth,
+                        segmentHeight
+                    );
+                    
+                    // Right side line
+                    ctx.fillRect(
+                        x + trackWidth*3/4 - sideLineWidth/2 - sideLineOffset,
+                        y,
+                        sideLineWidth,
+                        segmentHeight
+                    );
+                    
+                    // Draw grid pattern
+                    ctx.strokeStyle = `hsla(${(segment.hue + 240) % 360}, 100%, 50%, 0.3)`;
+                    ctx.lineWidth = 1;
+                    const gridSize = 20;
+                    for (let i = 0; i < trackWidth; i += gridSize) {
+                        ctx.beginPath();
+                        ctx.moveTo(x + i, y);
+                        ctx.lineTo(x + i, y + segmentHeight);
+                        ctx.stroke();
+                    }
+                    for (let i = 0; i < segmentHeight; i += gridSize) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, y + i);
+                        ctx.lineTo(x + trackWidth, y + i);
+                        ctx.stroke();
+                    }
+                    
+                    ctx.restore();
+                });
+            }
+
+            // Draw car with 3D effect
+            function drawCar() {
+                const scale = 1 + (car.z / 800);
+                const tilt = Math.sin(Date.now() / 200) * 5;
+                
+                ctx.save();
+                ctx.translate(car.x, car.y);
+                ctx.scale(scale, scale);
+                ctx.rotate(tilt * Math.PI / 180);
+                ctx.translate(-car.x, -car.y);
+                
+                // Main body with advanced gradient
+                const carGradient = ctx.createLinearGradient(
+                    car.x - car.width/2,
+                    car.y - car.height/2,
+                    car.x + car.width/2,
+                    car.y + car.height/2
+                );
+                carGradient.addColorStop(0, `hsl(${hue}, 100%, 60%)`);
+                carGradient.addColorStop(0.3, `hsl(${(hue + 180) % 360}, 100%, 40%)`);
+                carGradient.addColorStop(0.7, `hsl(${(hue + 180) % 360}, 100%, 40%)`);
+                carGradient.addColorStop(1, `hsl(${hue}, 100%, 60%)`);
+                
+                // Draw main body with sleek design
+                ctx.fillStyle = carGradient;
+                ctx.beginPath();
+                // Front
+                ctx.moveTo(car.x - car.width/2, car.y - car.height/4);
+                ctx.quadraticCurveTo(
+                    car.x - car.width/3, car.y - car.height/2,
+                    car.x - car.width/4, car.y - car.height/2
+                );
+                ctx.quadraticCurveTo(
+                    car.x, car.y - car.height/2.2,
+                    car.x + car.width/4, car.y - car.height/2
+                );
+                ctx.quadraticCurveTo(
+                    car.x + car.width/3, car.y - car.height/2,
+                    car.x + car.width/2, car.y - car.height/4
+                );
+                // Back
+                ctx.quadraticCurveTo(
+                    car.x + car.width/2.5, car.y + car.height/2,
+                    car.x + car.width/3, car.y + car.height/2
+                );
+                ctx.quadraticCurveTo(
+                    car.x, car.y + car.height/1.8,
+                    car.x - car.width/3, car.y + car.height/2
+                );
+                ctx.quadraticCurveTo(
+                    car.x - car.width/2.5, car.y + car.height/2,
+                    car.x - car.width/2, car.y - car.height/4
+                );
+                ctx.closePath();
+                ctx.fill();
+                
+                // Add glowing outline
+                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+                ctx.shadowBlur = 20;
+                ctx.strokeStyle = `hsl(${hue}, 100%, 80%)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Cockpit with advanced design
+                const cockpitGradient = ctx.createLinearGradient(
+                    car.x - car.width/3, car.y - car.height/3,
+                    car.x + car.width/3, car.y - car.height/3
+                );
+                cockpitGradient.addColorStop(0, `hsla(${(hue + 120) % 360}, 100%, 70%, 0.4)`);
+                cockpitGradient.addColorStop(0.5, `hsla(${(hue + 120) % 360}, 100%, 90%, 0.6)`);
+                cockpitGradient.addColorStop(1, `hsla(${(hue + 120) % 360}, 100%, 70%, 0.4)`);
+                
+                ctx.fillStyle = cockpitGradient;
+                ctx.beginPath();
+                ctx.moveTo(car.x - car.width/3, car.y - car.height/3);
+                ctx.quadraticCurveTo(
+                    car.x, car.y - car.height/2.5,
+                    car.x + car.width/3, car.y - car.height/3
+                );
+                ctx.quadraticCurveTo(
+                    car.x + car.width/4, car.y - car.height/4,
+                    car.x - car.width/4, car.y - car.height/4
+                );
+                ctx.quadraticCurveTo(
+                    car.x - car.width/3, car.y - car.height/3,
+                    car.x - car.width/3, car.y - car.height/3
+                );
+                ctx.closePath();
+                ctx.fill();
+                
+                // Engine section with pulsing effect
+                const pulse = Math.sin(Date.now() / 100) * 0.2 + 0.8;
+                const engineGradient = ctx.createLinearGradient(
+                    car.x - car.width/3, car.y + car.height/3,
+                    car.x + car.width/3, car.y + car.height/3
+                );
+                engineGradient.addColorStop(0, `hsla(${(hue + 60) % 360}, 100%, 50%, ${pulse})`);
+                engineGradient.addColorStop(0.5, `hsla(${(hue + 60) % 360}, 100%, 70%, ${pulse})`);
+                engineGradient.addColorStop(1, `hsla(${(hue + 60) % 360}, 100%, 50%, ${pulse})`);
+                
+                ctx.fillStyle = engineGradient;
+                ctx.beginPath();
+                ctx.moveTo(car.x - car.width/3, car.y + car.height/3);
+                ctx.quadraticCurveTo(
+                    car.x, car.y + car.height/2.5,
+                    car.x + car.width/3, car.y + car.height/3
+                );
+                ctx.quadraticCurveTo(
+                    car.x + car.width/4, car.y + car.height/2,
+                    car.x - car.width/4, car.y + car.height/2
+                );
+                ctx.quadraticCurveTo(
+                    car.x - car.width/3, car.y + car.height/3,
+                    car.x - car.width/3, car.y + car.height/3
+                );
+                ctx.closePath();
+                ctx.fill();
+                
+                // Side details with glowing lines
+                ctx.strokeStyle = `hsl(${(hue + 180) % 360}, 100%, 70%)`;
+                ctx.lineWidth = 2;
+                ctx.shadowColor = `hsl(${(hue + 180) % 360}, 100%, 50%)`;
+                ctx.shadowBlur = 10;
+                
+                // Left side detail
+                ctx.beginPath();
+                ctx.moveTo(car.x - car.width/2, car.y - car.height/4);
+                ctx.quadraticCurveTo(
+                    car.x - car.width/2.5, car.y,
+                    car.x - car.width/3, car.y
+                );
+                ctx.stroke();
+                
+                // Right side detail
+                ctx.beginPath();
+                ctx.moveTo(car.x + car.width/3, car.y);
+                ctx.quadraticCurveTo(
+                    car.x + car.width/2.5, car.y,
+                    car.x + car.width/2, car.y - car.height/4
+                );
+                ctx.stroke();
+                
+                // Front lights with advanced glow
+                const lightPulse = Math.sin(Date.now() / 50) * 0.2 + 0.8;
+                ctx.fillStyle = `hsla(${(hue + 120) % 360}, 100%, 90%, ${lightPulse})`;
+                ctx.shadowColor = `hsla(${(hue + 120) % 360}, 100%, 70%, ${lightPulse})`;
+                ctx.shadowBlur = 15;
+                
+                // Left headlight
+                ctx.beginPath();
+                ctx.arc(car.x - car.width/3, car.y - car.height/3, 4, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Right headlight
+                ctx.beginPath();
+                ctx.arc(car.x + car.width/3, car.y - car.height/3, 4, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Add energy trails
+                const trailGradient = ctx.createLinearGradient(
+                    car.x - car.width/2, car.y + car.height/2,
+                    car.x - car.width/2, car.y + car.height/2 + 20
+                );
+                trailGradient.addColorStop(0, `hsla(${(hue + 60) % 360}, 100%, 70%, 0.8)`);
+                trailGradient.addColorStop(1, `hsla(${(hue + 60) % 360}, 100%, 70%, 0)`);
+                
+                ctx.fillStyle = trailGradient;
+                ctx.beginPath();
+                ctx.moveTo(car.x - car.width/3, car.y + car.height/2);
+                ctx.lineTo(car.x + car.width/3, car.y + car.height/2);
+                ctx.lineTo(car.x, car.y + car.height/2 + 20);
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.restore();
+            }
+
+            // Draw obstacles with 3D effect
+            function drawObstacles() {
+                obstacles.forEach(obstacle => {
+                    const scale = 1 + (obstacle.z / 800);
+                    const tilt = Math.sin(Date.now() / 300 + obstacle.x) * 5;
+                    
+                    ctx.save();
+                    ctx.translate(obstacle.x + obstacle.width/2, obstacle.y + obstacle.height/2);
+                    ctx.scale(scale, scale);
+                    ctx.rotate(tilt * Math.PI / 180);
+                    ctx.translate(-(obstacle.x + obstacle.width/2), -(obstacle.y + obstacle.height/2));
+                    
+                    // Draw building base with gradient
+                    const buildingGradient = ctx.createLinearGradient(
+                        obstacle.x,
+                        obstacle.y,
+                        obstacle.x,
+                        obstacle.y + obstacle.height
+                    );
+                    buildingGradient.addColorStop(0, `hsl(${obstacle.hue}, 100%, 30%)`);
+                    buildingGradient.addColorStop(0.5, `hsl(${(obstacle.hue + 60) % 360}, 100%, 20%)`);
+                    buildingGradient.addColorStop(1, `hsl(${obstacle.hue}, 100%, 10%)`);
+                    ctx.fillStyle = buildingGradient;
+                    ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                    
+                    // Add building details
+                    const windowSize = 8;
+                    const windowSpacing = 12;
+                    const windowRows = Math.floor(obstacle.height / windowSpacing);
+                    const windowCols = Math.floor(obstacle.width / windowSpacing);
+                    
+                    // Draw windows
+                    for (let row = 0; row < windowRows; row++) {
+                        for (let col = 0; col < windowCols; col++) {
+                            const windowX = obstacle.x + col * windowSpacing + (windowSpacing - windowSize) / 2;
+                            const windowY = obstacle.y + row * windowSpacing + (windowSpacing - windowSize) / 2;
+                            
+                            // Random window glow
+                            const glowIntensity = Math.random() * 0.8 + 0.2;
+                            ctx.fillStyle = `hsla(${(obstacle.hue + 120) % 360}, 100%, 70%, ${glowIntensity})`;
+                            ctx.shadowColor = `hsla(${(obstacle.hue + 120) % 360}, 100%, 50%, ${glowIntensity})`;
+                            ctx.shadowBlur = 5;
+                            ctx.fillRect(windowX, windowY, windowSize, windowSize);
+                        }
+                    }
+                    
+                    // Add building edges with glow
+                    ctx.shadowColor = `hsl(${obstacle.hue}, 100%, 50%)`;
+                    ctx.shadowBlur = 15;
+                    ctx.strokeStyle = `hsl(${obstacle.hue}, 100%, 70%)`;
+                    ctx.lineWidth = 2;
+                    
+                    // Draw vertical edges
+                    ctx.beginPath();
+                    ctx.moveTo(obstacle.x, obstacle.y);
+                    ctx.lineTo(obstacle.x, obstacle.y + obstacle.height);
+                    ctx.moveTo(obstacle.x + obstacle.width, obstacle.y);
+                    ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + obstacle.height);
+                    ctx.stroke();
+                    
+                    // Draw horizontal edges
+                    ctx.beginPath();
+                    ctx.moveTo(obstacle.x, obstacle.y);
+                    ctx.lineTo(obstacle.x + obstacle.width, obstacle.y);
+                    ctx.moveTo(obstacle.x, obstacle.y + obstacle.height);
+                    ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + obstacle.height);
+                    ctx.stroke();
+                    
+                    // Add architectural details
+                    const detailSpacing = obstacle.height / 4;
+                    for (let i = 1; i < 4; i++) {
+                        const detailY = obstacle.y + i * detailSpacing;
+                        ctx.beginPath();
+                        ctx.moveTo(obstacle.x, detailY);
+                        ctx.lineTo(obstacle.x + obstacle.width, detailY);
+                        ctx.strokeStyle = `hsla(${(obstacle.hue + 180) % 360}, 100%, 50%, 0.5)`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                    
+                    // Add antenna/spire
+                    const spireHeight = obstacle.height * 0.3;
+                    ctx.beginPath();
+                    ctx.moveTo(obstacle.x + obstacle.width/2, obstacle.y);
+                    ctx.lineTo(obstacle.x + obstacle.width/2, obstacle.y - spireHeight);
+                    ctx.strokeStyle = `hsl(${(obstacle.hue + 60) % 360}, 100%, 70%)`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    
+                    // Add spire glow
+                    ctx.fillStyle = `hsl(${(obstacle.hue + 60) % 360}, 100%, 50%)`;
+                    ctx.beginPath();
+                    ctx.arc(obstacle.x + obstacle.width/2, obstacle.y - spireHeight, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.restore();
+                });
             }
 
             // Check collisions
-            if (checkCollisions()) {
-                gameOver = true;
-                gameOverScreen.style.display = 'block';
+            function checkCollisions() {
+                return obstacles.some(obstacle => {
+                    return car.x + car.width / 2 > obstacle.x &&
+                           car.x - car.width / 2 < obstacle.x + obstacle.width &&
+                           car.y + car.height / 2 > obstacle.y &&
+                           car.y - car.height / 2 < obstacle.y + obstacle.height;
+                });
             }
-        }
 
-        // Draw everything
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawBackground();
-            drawTrack();
-            drawObstacles();
-            drawCar();
-        }
+            // Update game state
+            function update() {
+                if (gameOver || isPaused) return;
 
-        // Game loop
-        function gameLoop() {
-            update();
+                updateParticles();
+                // Move track
+                trackOffset += 2;
+                
+                // Update segment positions and properties
+                trackSegments.forEach(segment => {
+                    segment.y = (segment.y + 2) % (maxSegments * segmentHeight);
+                    segment.hue = (segment.hue + 0.5) % 360;
+                    
+                    // Smoothly update offset
+                    const targetOffset = Math.sin((segment.y + trackOffset) / 100) * 50;
+                    segment.offset += (targetOffset - segment.offset) * 0.1;
+                });
+
+                // Move obstacles
+                obstacles.forEach(obstacle => {
+                    obstacle.y += 3;
+                    obstacle.z += 0.2;
+                    obstacle.hue = (obstacle.hue + 1) % 360;
+                });
+
+                // Remove off-screen obstacles
+                obstacles.forEach((obstacle, index) => {
+                    if (obstacle.y > canvas.height) {
+                        obstacles.splice(index, 1);
+                        score += 10;
+                        scoreElement.textContent = `Score: ${score}`;
+                    }
+                });
+
+                // Create new obstacles
+                if (Math.random() < 0.02) {
+                    createObstacle();
+                }
+
+                // Update container tilt based on car position
+                const targetTilt = ((car.x - canvas.width/2) / (canvas.width/2)) * 10;
+                tilt += (targetTilt - tilt) * 0.1;
+                gameContainer.style.transform = `rotateX(30deg) rotateY(${tilt}deg)`;
+
+                // Check collisions
+                if (checkCollisions()) {
+                    gameOver = true;
+                    gameOverScreen.style.display = 'block';
+                }
+            }
+
+            // Draw everything
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawBackground();
+                drawTrack();
+                drawParticles();
+                drawObstacles();
+                drawCar();
+            }
+
+            // Game loop
+            function gameLoop() {
+                if (!isPaused) {
+                    update();
+                }
+                draw();
+                animationFrame = requestAnimationFrame(gameLoop);
+            }
+
+            // Handle keyboard input
+            const keys = {};
+            window.addEventListener('keydown', e => {
+                keys[e.key] = true;
+                if (gameOver && e.key === 'r') {
+                    resetGame();
+                }
+                if (e.key === 'Escape' && gameStarted && !gameOver) {
+                    togglePause();
+                }
+            });
+            window.addEventListener('keyup', e => {
+                keys[e.key] = false;
+            });
+
+            // Update car position based on input
+            function handleInput() {
+                if (keys['ArrowLeft'] || keys['a']) {
+                    car.x = Math.max(car.width / 2, car.x - car.speed);
+                }
+                if (keys['ArrowRight'] || keys['d']) {
+                    car.x = Math.min(canvas.width - car.width / 2, car.x + car.speed);
+                }
+            }
+
+            // Toggle pause state
+            function togglePause() {
+                isPaused = !isPaused;
+                if (isPaused) {
+                    pauseMenu.style.display = 'block';
+                    canvas.classList.add('blur');
+                } else {
+                    pauseMenu.style.display = 'none';
+                    canvas.classList.remove('blur');
+                }
+            }
+
+            // Resume button click handler
+            resumeButton.addEventListener('click', () => {
+                togglePause();
+            });
+
+            // Reset game
+            function resetGame() {
+                gameOver = false;
+                isPaused = false;
+                score = 0;
+                scoreElement.textContent = `Score: ${score}`;
+                gameOverScreen.style.display = 'none';
+                pauseMenu.style.display = 'none';
+                canvas.classList.remove('blur');
+                car.x = canvas.width / 2;
+                obstacles.length = 0;
+                trackSegments.length = 0;
+                initTrack();
+                initParticles();
+            }
+
+            // Start game
+            startButton.addEventListener('click', () => {
+                gameStarted = true;
+                startScreen.style.display = 'none';
+                initTrack();
+                initParticles();
+                gameLoop();
+            });
+
+            // Main game loop with input handling
+            function mainLoop() {
+                if (gameStarted && !gameOver) {
+                    handleInput();
+                }
+                requestAnimationFrame(mainLoop);
+            }
+
+            // Initialize the game
+            initTrack();
             draw();
-            animationFrame = requestAnimationFrame(gameLoop);
-        }
-
-        // Handle keyboard input
-        const keys = {};
-        window.addEventListener('keydown', e => {
-            keys[e.key] = true;
-            if (gameOver && e.key === 'r') {
-                resetGame();
-            }
+            mainLoop();
         });
-        window.addEventListener('keyup', e => {
-            keys[e.key] = false;
-        });
-
-        // Update car position based on input
-        function handleInput() {
-            if (keys['ArrowLeft'] || keys['a']) {
-                car.x = Math.max(car.width / 2, car.x - car.speed);
-            }
-            if (keys['ArrowRight'] || keys['d']) {
-                car.x = Math.min(canvas.width - car.width / 2, car.x + car.speed);
-            }
-        }
-
-        // Reset game
-        function resetGame() {
-            gameOver = false;
-            score = 0;
-            scoreElement.textContent = `Score: ${score}`;
-            gameOverScreen.style.display = 'none';
-            car.x = canvas.width / 2;
-            obstacles.length = 0;
-            trackSegments.length = 0;
-            initTrack();
-        }
-
-        // Start game
-        startButton.addEventListener('click', () => {
-            gameStarted = true;
-            startScreen.style.display = 'none';
-            initTrack();
-            gameLoop();
-        });
-
-        // Main game loop with input handling
-        function mainLoop() {
-            if (gameStarted && !gameOver) {
-                handleInput();
-            }
-            requestAnimationFrame(mainLoop);
-        }
-
-        mainLoop();
     </script>
 </body>
 </html> 
