@@ -192,13 +192,15 @@
             let roadLines = [];
             let tilt = 0;
             let isPaused = false;
+            let fadeOutOpacity = 1;
+            let fadeOutTimer = 0;
 
             // Player car
             const car = {
                 x: canvas.width / 2,
                 y: canvas.height - 100,
-                width: 50,
-                height: 80,
+                width: 30,
+                height: 48,
                 speed: 8,
                 z: 0,
                 velocity: 0,
@@ -211,9 +213,10 @@
             // Track segments
             const trackSegments = [];
             const segmentHeight = 50;
-            const trackWidth = 300;
+            const trackWidth = 500;
             let trackOffset = 0;
             const maxSegments = Math.ceil(canvas.height / segmentHeight) + 2;
+            let lastOffset = 0;
 
             // Obstacles
             const obstacles = [];
@@ -223,26 +226,40 @@
             // Initialize track
             function initTrack() {
                 trackSegments.length = 0;
+                lastOffset = 0;
                 for (let i = 0; i < maxSegments; i++) {
+                    // Calculate smooth offset using sine wave with phase shift
+                    const phase = i * 0.1;
+                    const offset = Math.sin(phase) * 40;
+                    
                     trackSegments.push({
                         y: i * segmentHeight,
-                        offset: Math.sin(i * 0.5) * 50, // Smoother initial curve
+                        offset: offset,
                         z: i * 20,
-                        hue: (hue + i * 30) % 360
+                        hue: (hue + i * 30) % 360,
+                        phase: phase
                     });
+                    lastOffset = offset;
                 }
             }
 
             // Create new obstacle
             function createObstacle() {
-                obstacles.push({
-                    x: Math.random() * (canvas.width - obstacleWidth),
-                    y: -obstacleHeight,
-                    width: obstacleWidth,
-                    height: obstacleHeight,
-                    z: 0,
-                    hue: (hue + Math.random() * 360) % 360
-                });
+                // Find the current track segment at the top of the screen
+                const topSegment = trackSegments.find(segment => segment.y < 0 && segment.y > -segmentHeight);
+                if (topSegment) {
+                    const trackX = canvas.width / 2 + topSegment.offset - trackWidth / 2;
+                    const randomX = trackX + Math.random() * trackWidth;
+                    
+                    obstacles.push({
+                        x: randomX,
+                        y: -obstacleHeight,
+                        width: obstacleWidth,
+                        height: obstacleHeight,
+                        z: 0,
+                        hue: (hue + Math.random() * 360) % 360
+                    });
+                }
             }
 
             // Update game state
@@ -251,19 +268,22 @@
                 
                 // Update segment positions and properties
                 trackSegments.forEach(segment => {
-                    segment.y += 4;
-                    segment.hue = (segment.hue + 0.5) % 360;
+                    segment.y += 6;
+                    segment.hue = (segment.hue + 0.8) % 360;
                     
-                    // Smoothly update offset using a continuous sine wave
-                    const targetOffset = Math.sin((segment.y) / 100) * 50;
+                    // Update phase for smooth curve
+                    segment.phase += 0.1;
+                    const targetOffset = Math.sin(segment.phase) * 40;
+                    
+                    // Smooth transition to new offset
                     segment.offset += (targetOffset - segment.offset) * 0.1;
                     
                     // Reset segment position when it goes off screen
                     if (segment.y > canvas.height) {
                         segment.y = -segmentHeight;
                         segment.z = 0;
-                        // Maintain smooth curve by using the last segment's offset as reference
                         const lastSegment = trackSegments[trackSegments.length - 1];
+                        segment.phase = lastSegment.phase + 0.1;
                         segment.offset = lastSegment.offset;
                         segment.hue = (lastSegment.hue + 30) % 360;
                     }
@@ -271,9 +291,9 @@
 
                 // Move obstacles
                 obstacles.forEach(obstacle => {
-                    obstacle.y += 6;
-                    obstacle.z += 0.4;
-                    obstacle.hue = (obstacle.hue + 1) % 360;
+                    obstacle.y += 8;
+                    obstacle.z += 0.6;
+                    obstacle.hue = (obstacle.hue + 1.5) % 360;
                 });
 
                 // Remove off-screen obstacles
@@ -285,15 +305,23 @@
                     }
                 });
 
-                // Create new obstacles
-                if (Math.random() < 0.02) {
+                // Create new obstacles more frequently
+                if (Math.random() < 0.03) {
                     createObstacle();
                 }
 
-                // Update container tilt based on car position
-                const targetTilt = ((car.x - canvas.width/2) / (canvas.width/2)) * 10;
-                tilt += (targetTilt - tilt) * 0.1;
-                gameContainer.style.transform = `rotateX(30deg) rotateY(${tilt}deg)`;
+                // Update container tilt based on car position and velocity
+                const currentSegment = trackSegments.find(segment => 
+                    segment.y <= car.y && segment.y + segmentHeight > car.y
+                );
+                
+                if (currentSegment) {
+                    const trackX = canvas.width / 2 + currentSegment.offset;
+                    const targetTilt = ((car.x - trackX) / (trackWidth/2)) * 10;
+                    const tiltDirection = car.velocity > 0 ? -1 : 1;
+                    tilt += (targetTilt * tiltDirection - tilt) * 0.12;
+                    gameContainer.style.transform = `rotateX(30deg) rotateY(${tilt}deg)`;
+                }
 
                 // Check collisions
                 if (checkCollisions()) {
@@ -313,35 +341,61 @@
 
             // Draw psychedelic background
             function drawBackground() {
-                hue = (hue + 0.2) % 360; // Slower color transition
+                hue = (hue + 0.3) % 360;
                 const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-                gradient.addColorStop(0, `hsla(${hue}, 100%, 50%, 0.3)`); // More transparent
+                gradient.addColorStop(0, `hsla(${hue}, 100%, 50%, 0.3)`);
                 gradient.addColorStop(0.5, `hsla(${(hue + 120) % 360}, 100%, 50%, 0.2)`);
                 gradient.addColorStop(1, `hsla(${(hue + 240) % 360}, 100%, 50%, 0.3)`);
                 
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                // Add subtle noise effect instead of large circles
-                for (let i = 0; i < 100; i++) {
-                    const x = Math.random() * canvas.width;
-                    const y = Math.random() * canvas.height;
-                    const size = Math.random() * 2 + 1; // Very small dots
-                    const opacity = Math.random() * 0.1; // Very subtle
-                    
-                    ctx.fillStyle = `hsla(${(hue + i * 3.6) % 360}, 100%, 50%, ${opacity})`;
+                // Draw vaporwave grid
+                const gridSize = 40;
+                const gridColor = `hsla(${(hue + 180) % 360}, 100%, 50%, 0.1)`;
+                ctx.strokeStyle = gridColor;
+                ctx.lineWidth = 1;
+
+                // Draw vertical lines
+                for (let x = 0; x < canvas.width; x += gridSize) {
                     ctx.beginPath();
-                    ctx.arc(x, y, size, 0, Math.PI * 2);
-                    ctx.fill();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, canvas.height);
+                    ctx.stroke();
                 }
+
+                // Draw horizontal lines
+                for (let y = 0; y < canvas.height; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(canvas.width, y);
+                    ctx.stroke();
+                }
+
+                // Add perspective effect to grid
+                ctx.save();
+                ctx.translate(canvas.width/2, canvas.height/2);
+                ctx.scale(1, 0.5);
+                ctx.translate(-canvas.width/2, -canvas.height/2);
+                
+                // Draw diagonal lines for vaporwave effect
+                const diagonalColor = `hsla(${(hue + 90) % 360}, 100%, 50%, 0.15)`;
+                ctx.strokeStyle = diagonalColor;
+                for (let i = -canvas.width; i < canvas.width * 2; i += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i + canvas.height, canvas.height);
+                    ctx.stroke();
+                }
+                ctx.restore();
             }
 
             // Draw track with 3D effect
             function drawTrack() {
                 // Draw segments that are visible on screen
-                trackSegments.forEach(segment => {
+                trackSegments.forEach((segment, index) => {
                     const y = segment.y;
-                    if (y < -segmentHeight || y > canvas.height) return; // Skip off-screen segments
+                    if (y < -segmentHeight || y > canvas.height) return;
                     
                     const x = canvas.width / 2 + segment.offset - trackWidth / 2;
                     const scale = 1 + (segment.z / 800);
@@ -361,65 +415,64 @@
                     ctx.fillStyle = trackGradient;
                     ctx.fillRect(x, y, trackWidth, segmentHeight);
                     
-                    // Draw track borders with glow
+                    // Draw track borders with glow and barrier effect
                     ctx.shadowColor = `hsl(${segment.hue}, 100%, 50%)`;
                     ctx.shadowBlur = 15;
-                    ctx.strokeStyle = `hsl(${segment.hue}, 100%, 70%)`;
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(x, y, trackWidth, segmentHeight);
                     
-                    // Draw center line with animation
+                    // Left barrier with seamless transition
+                    const leftBarrierGradient = ctx.createLinearGradient(x, y, x + 20, y);
+                    leftBarrierGradient.addColorStop(0, `hsla(${segment.hue}, 100%, 70%, 0.8)`);
+                    leftBarrierGradient.addColorStop(1, `hsla(${segment.hue}, 100%, 50%, 0.4)`);
+                    ctx.fillStyle = leftBarrierGradient;
+                    ctx.fillRect(x, y, 20, segmentHeight);
+                    
+                    // Right barrier with seamless transition
+                    const rightBarrierGradient = ctx.createLinearGradient(x + trackWidth - 20, y, x + trackWidth, y);
+                    rightBarrierGradient.addColorStop(0, `hsla(${segment.hue}, 100%, 50%, 0.4)`);
+                    rightBarrierGradient.addColorStop(1, `hsla(${segment.hue}, 100%, 70%, 0.8)`);
+                    ctx.fillStyle = rightBarrierGradient;
+                    ctx.fillRect(x + trackWidth - 20, y, 20, segmentHeight);
+                    
+                    // Draw center line with seamless animation
                     const centerLineWidth = 5;
                     const centerLineOffset = Math.sin((y + trackOffset) / 20) * 10;
                     ctx.fillStyle = `hsl(${(segment.hue + 120) % 360}, 100%, 70%)`;
                     ctx.shadowColor = `hsl(${(segment.hue + 120) % 360}, 100%, 50%)`;
                     ctx.shadowBlur = 10;
-                    ctx.fillRect(
-                        x + trackWidth/2 - centerLineWidth/2 + centerLineOffset,
-                        y,
-                        centerLineWidth,
-                        segmentHeight
-                    );
                     
-                    // Draw side lines with animation
+                    // Draw center line with rounded ends for seamless look
+                    ctx.beginPath();
+                    ctx.moveTo(x + trackWidth/2 - centerLineWidth/2 + centerLineOffset, y);
+                    ctx.lineTo(x + trackWidth/2 + centerLineWidth/2 + centerLineOffset, y);
+                    ctx.lineTo(x + trackWidth/2 + centerLineWidth/2 + centerLineOffset, y + segmentHeight);
+                    ctx.lineTo(x + trackWidth/2 - centerLineWidth/2 + centerLineOffset, y + segmentHeight);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // Draw side lines with seamless animation
                     const sideLineWidth = 3;
                     const sideLineOffset = Math.sin((y + trackOffset) / 30) * 5;
                     ctx.fillStyle = `hsl(${(segment.hue + 180) % 360}, 100%, 70%)`;
                     ctx.shadowColor = `hsl(${(segment.hue + 180) % 360}, 100%, 50%)`;
                     ctx.shadowBlur = 8;
                     
-                    // Left side line
-                    ctx.fillRect(
-                        x + trackWidth/4 - sideLineWidth/2 + sideLineOffset,
-                        y,
-                        sideLineWidth,
-                        segmentHeight
-                    );
+                    // Left side line with rounded ends
+                    ctx.beginPath();
+                    ctx.moveTo(x + trackWidth/4 - sideLineWidth/2 + sideLineOffset, y);
+                    ctx.lineTo(x + trackWidth/4 + sideLineWidth/2 + sideLineOffset, y);
+                    ctx.lineTo(x + trackWidth/4 + sideLineWidth/2 + sideLineOffset, y + segmentHeight);
+                    ctx.lineTo(x + trackWidth/4 - sideLineWidth/2 + sideLineOffset, y + segmentHeight);
+                    ctx.closePath();
+                    ctx.fill();
                     
-                    // Right side line
-                    ctx.fillRect(
-                        x + trackWidth*3/4 - sideLineWidth/2 - sideLineOffset,
-                        y,
-                        sideLineWidth,
-                        segmentHeight
-                    );
-                    
-                    // Draw grid pattern
-                    ctx.strokeStyle = `hsla(${(segment.hue + 240) % 360}, 100%, 50%, 0.3)`;
-                    ctx.lineWidth = 1;
-                    const gridSize = 20;
-                    for (let i = 0; i < trackWidth; i += gridSize) {
-                        ctx.beginPath();
-                        ctx.moveTo(x + i, y);
-                        ctx.lineTo(x + i, y + segmentHeight);
-                        ctx.stroke();
-                    }
-                    for (let i = 0; i < segmentHeight; i += gridSize) {
-                        ctx.beginPath();
-                        ctx.moveTo(x, y + i);
-                        ctx.lineTo(x + trackWidth, y + i);
-                        ctx.stroke();
-                    }
+                    // Right side line with rounded ends
+                    ctx.beginPath();
+                    ctx.moveTo(x + trackWidth*3/4 - sideLineWidth/2 - sideLineOffset, y);
+                    ctx.lineTo(x + trackWidth*3/4 + sideLineWidth/2 - sideLineOffset, y);
+                    ctx.lineTo(x + trackWidth*3/4 + sideLineWidth/2 - sideLineOffset, y + segmentHeight);
+                    ctx.lineTo(x + trackWidth*3/4 - sideLineWidth/2 - sideLineOffset, y + segmentHeight);
+                    ctx.closePath();
+                    ctx.fill();
                     
                     ctx.restore();
                 });
@@ -448,35 +501,31 @@
                 carGradient.addColorStop(0.7, `hsl(${(hue + 180) % 360}, 100%, 40%)`);
                 carGradient.addColorStop(1, `hsl(${hue}, 100%, 60%)`);
                 
-                // Draw main body with sleek design
+                // Draw main body with sleek, futuristic design
                 ctx.fillStyle = carGradient;
                 ctx.beginPath();
-                // Front
-                ctx.moveTo(car.x - car.width/2, car.y - car.height/4);
+                // Bottom (front)
+                ctx.moveTo(car.x - car.width/3, car.y + car.height/2);
                 ctx.quadraticCurveTo(
-                    car.x - car.width/3, car.y - car.height/2,
-                    car.x - car.width/4, car.y - car.height/2
+                    car.x - car.width/4, car.y + car.height/3,
+                    car.x, car.y + car.height/4
                 );
                 ctx.quadraticCurveTo(
-                    car.x, car.y - car.height/2.2,
+                    car.x + car.width/4, car.y + car.height/3,
+                    car.x + car.width/3, car.y + car.height/2
+                );
+                // Top (back)
+                ctx.quadraticCurveTo(
+                    car.x + car.width/2, car.y - car.height/3,
                     car.x + car.width/4, car.y - car.height/2
                 );
                 ctx.quadraticCurveTo(
-                    car.x + car.width/3, car.y - car.height/2,
-                    car.x + car.width/2, car.y - car.height/4
-                );
-                // Back
-                ctx.quadraticCurveTo(
-                    car.x + car.width/2.5, car.y + car.height/2,
-                    car.x + car.width/3, car.y + car.height/2
+                    car.x, car.y - car.height/1.5,
+                    car.x - car.width/4, car.y - car.height/2
                 );
                 ctx.quadraticCurveTo(
-                    car.x, car.y + car.height/1.8,
+                    car.x - car.width/2, car.y - car.height/3,
                     car.x - car.width/3, car.y + car.height/2
-                );
-                ctx.quadraticCurveTo(
-                    car.x - car.width/2.5, car.y + car.height/2,
-                    car.x - car.width/2, car.y - car.height/4
                 );
                 ctx.closePath();
                 ctx.fill();
@@ -490,8 +539,8 @@
                 
                 // Cockpit with advanced design
                 const cockpitGradient = ctx.createLinearGradient(
-                    car.x - car.width/3, car.y - car.height/3,
-                    car.x + car.width/3, car.y - car.height/3
+                    car.x - car.width/4, car.y - car.height/3,
+                    car.x + car.width/4, car.y - car.height/3
                 );
                 cockpitGradient.addColorStop(0, `hsla(${(hue + 120) % 360}, 100%, 70%, 0.4)`);
                 cockpitGradient.addColorStop(0.5, `hsla(${(hue + 120) % 360}, 100%, 90%, 0.6)`);
@@ -499,18 +548,18 @@
                 
                 ctx.fillStyle = cockpitGradient;
                 ctx.beginPath();
-                ctx.moveTo(car.x - car.width/3, car.y - car.height/3);
+                ctx.moveTo(car.x - car.width/4, car.y - car.height/3);
                 ctx.quadraticCurveTo(
                     car.x, car.y - car.height/2.5,
-                    car.x + car.width/3, car.y - car.height/3
+                    car.x + car.width/4, car.y - car.height/3
                 );
                 ctx.quadraticCurveTo(
-                    car.x + car.width/4, car.y - car.height/4,
-                    car.x - car.width/4, car.y - car.height/4
+                    car.x + car.width/6, car.y - car.height/4,
+                    car.x - car.width/6, car.y - car.height/4
                 );
                 ctx.quadraticCurveTo(
-                    car.x - car.width/3, car.y - car.height/3,
-                    car.x - car.width/3, car.y - car.height/3
+                    car.x - car.width/4, car.y - car.height/3,
+                    car.x - car.width/4, car.y - car.height/3
                 );
                 ctx.closePath();
                 ctx.fill();
@@ -567,20 +616,20 @@
                 );
                 ctx.stroke();
                 
-                // Front lights with advanced glow
+                // Engine lights with advanced glow
                 const lightPulse = Math.sin(Date.now() / 50) * 0.2 + 0.8;
                 ctx.fillStyle = `hsla(${(hue + 120) % 360}, 100%, 90%, ${lightPulse})`;
                 ctx.shadowColor = `hsla(${(hue + 120) % 360}, 100%, 70%, ${lightPulse})`;
                 ctx.shadowBlur = 15;
                 
-                // Left headlight
+                // Left engine light
                 ctx.beginPath();
-                ctx.arc(car.x - car.width/3, car.y - car.height/3, 4, 0, Math.PI * 2);
+                ctx.arc(car.x - car.width/3, car.y + car.height/3, 4, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Right headlight
+                // Right engine light
                 ctx.beginPath();
-                ctx.arc(car.x + car.width/3, car.y - car.height/3, 4, 0, Math.PI * 2);
+                ctx.arc(car.x + car.width/3, car.y + car.height/3, 4, 0, Math.PI * 2);
                 ctx.fill();
                 
                 // Add energy trails
@@ -605,7 +654,7 @@
                     const driftIntensity = Math.abs(car.velocity) / 10;
                     for (let i = 0; i < 3; i++) {
                         const smokeX = car.x + (Math.random() - 0.5) * 20;
-                        const smokeY = car.y - car.height/2 - Math.random() * 20;
+                        const smokeY = car.y + car.height/2 + Math.random() * 20;
                         const smokeSize = Math.random() * 10 + 5;
                         const smokeOpacity = Math.random() * 0.3 + 0.1;
                         
@@ -619,17 +668,17 @@
 
                     // Drift trail
                     const trailGradient = ctx.createLinearGradient(
-                        car.x - car.width/2, car.y - car.height/2,
-                        car.x - car.width/2, car.y - car.height/2 - 30
+                        car.x - car.width/2, car.y + car.height/2,
+                        car.x - car.width/2, car.y + car.height/2 + 30
                     );
                     trailGradient.addColorStop(0, `hsla(${(hue + 60) % 360}, 100%, 70%, ${driftIntensity})`);
                     trailGradient.addColorStop(1, `hsla(${(hue + 60) % 360}, 100%, 70%, 0)`);
                     
                     ctx.fillStyle = trailGradient;
                     ctx.beginPath();
-                    ctx.moveTo(car.x - car.width/3, car.y - car.height/2);
-                    ctx.lineTo(car.x + car.width/3, car.y - car.height/2);
-                    ctx.lineTo(car.x, car.y - car.height/2 - 30);
+                    ctx.moveTo(car.x - car.width/3, car.y + car.height/2);
+                    ctx.lineTo(car.x + car.width/3, car.y + car.height/2);
+                    ctx.lineTo(car.x, car.y + car.height/2 + 30);
                     ctx.closePath();
                     ctx.fill();
                 }
@@ -738,6 +787,32 @@
 
             // Check collisions
             function checkCollisions() {
+                // Check track boundaries
+                const currentSegment = trackSegments.find(segment => 
+                    segment.y <= car.y && segment.y + segmentHeight > car.y
+                );
+                
+                if (currentSegment) {
+                    const trackX = canvas.width / 2 + currentSegment.offset;
+                    const trackLeft = trackX - trackWidth/2;
+                    const trackRight = trackX + trackWidth/2;
+                    
+                    // Check left barrier collision
+                    if (car.x - car.width/2 < trackLeft + 20) {
+                        car.x = trackLeft + 20 + car.width/2;
+                        car.velocity = -car.velocity * 0.5; // Bounce off with reduced velocity
+                        return false;
+                    }
+                    
+                    // Check right barrier collision
+                    if (car.x + car.width/2 > trackRight - 20) {
+                        car.x = trackRight - 20 - car.width/2;
+                        car.velocity = -car.velocity * 0.5; // Bounce off with reduced velocity
+                        return false;
+                    }
+                }
+
+                // Check obstacle collisions
                 return obstacles.some(obstacle => {
                     return car.x + car.width / 2 > obstacle.x &&
                            car.x - car.width / 2 < obstacle.x + obstacle.width &&
@@ -772,46 +847,63 @@
 
             // Update car position based on input
             function handleInput() {
-                const maxVelocity = 10;
-                const acceleration = 0.5;
-                const deceleration = 0.3;
-                const driftThreshold = 0.5;
-                const maxDriftAngle = 30;
+                const maxVelocity = 15;
+                const acceleration = 0.6;
+                const deceleration = 0.4;
+                const driftThreshold = 1.0;
+                const maxDriftAngle = 25;
+                const trackFollowSpeed = 0.08;
 
-                // Handle left/right movement
-                if (keys['ArrowLeft'] || keys['a']) {
-                    car.velocity = Math.max(-maxVelocity, car.velocity - acceleration);
-                    if (Math.abs(car.velocity) > driftThreshold) {
-                        car.drift = true;
-                        car.driftAngle = Math.min(maxDriftAngle, car.driftAngle + 2);
-                    }
-                } else if (keys['ArrowRight'] || keys['d']) {
-                    car.velocity = Math.min(maxVelocity, car.velocity + acceleration);
-                    if (Math.abs(car.velocity) > driftThreshold) {
-                        car.drift = true;
-                        car.driftAngle = Math.max(-maxDriftAngle, car.driftAngle - 2);
-                    }
-                } else {
-                    // Decelerate when no input
-                    if (car.velocity > 0) {
-                        car.velocity = Math.max(0, car.velocity - deceleration);
-                    } else if (car.velocity < 0) {
-                        car.velocity = Math.min(0, car.velocity + deceleration);
-                    }
+                // Find the current track segment the car is on
+                const currentSegment = trackSegments.find(segment => 
+                    segment.y <= car.y && segment.y + segmentHeight > car.y
+                );
+
+                if (currentSegment) {
+                    // Calculate the target position based on track offset
+                    const targetX = canvas.width / 2 + currentSegment.offset;
                     
-                    // Reduce drift angle when not actively drifting
-                    if (Math.abs(car.driftAngle) > 0) {
-                        car.driftAngle *= 0.95;
-                        if (Math.abs(car.driftAngle) < 0.1) {
-                            car.driftAngle = 0;
-                            car.drift = false;
+                    // Handle left/right movement with track following
+                    if (keys['ArrowLeft'] || keys['a']) {
+                        car.velocity = Math.max(-maxVelocity, car.velocity - acceleration);
+                        if (Math.abs(car.velocity) > driftThreshold) {
+                            car.drift = true;
+                            car.driftAngle = Math.min(maxDriftAngle, car.driftAngle + 2);
+                        }
+                    } else if (keys['ArrowRight'] || keys['d']) {
+                        car.velocity = Math.min(maxVelocity, car.velocity + acceleration);
+                        if (Math.abs(car.velocity) > driftThreshold) {
+                            car.drift = true;
+                            car.driftAngle = Math.max(-maxDriftAngle, car.driftAngle - 2);
+                        }
+                    } else {
+                        // Decelerate when no input
+                        if (car.velocity > 0) {
+                            car.velocity = Math.max(0, car.velocity - deceleration);
+                        } else if (car.velocity < 0) {
+                            car.velocity = Math.min(0, car.velocity + deceleration);
+                        }
+                        
+                        // Reduce drift angle when not actively drifting
+                        if (Math.abs(car.driftAngle) > 0) {
+                            car.driftAngle *= 0.95;
+                            if (Math.abs(car.driftAngle) < 0.1) {
+                                car.driftAngle = 0;
+                                car.drift = false;
+                            }
                         }
                     }
-                }
 
-                // Update car position with momentum
-                car.x += car.velocity;
-                car.x = Math.max(car.width / 2, Math.min(canvas.width - car.width / 2, car.x));
+                    // Update car position with momentum and track following
+                    const trackLeft = targetX - trackWidth/2 + car.width/2;
+                    const trackRight = targetX + trackWidth/2 - car.width/2;
+                    
+                    // Apply velocity with full effect
+                    car.x += car.velocity;
+                    
+                    // Keep car within track boundaries
+                    car.x = Math.max(trackLeft, Math.min(trackRight, car.x));
+                }
             }
 
             // Toggle pause state
