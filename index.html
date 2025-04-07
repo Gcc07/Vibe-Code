@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Psychedelic Racer</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+
+        #gameCanvas {
+            border: 2px solid #fff;
+            background: #000;
+        }
+
+        #gameOver {
+            position: absolute;
+            color: #fff;
+            font-size: 48px;
+            text-align: center;
+            display: none;
+            text-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff;
+        }
+
+        #score {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 24px;
+            text-shadow: 0 0 5px #ff00ff, 0 0 10px #00ffff;
+        }
+
+        #startScreen {
+            position: absolute;
+            color: #fff;
+            text-align: center;
+            text-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff;
+        }
+
+        #startButton {
+            background: linear-gradient(45deg, #ff00ff, #00ffff);
+            border: none;
+            padding: 15px 30px;
+            font-size: 24px;
+            color: white;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.3s;
+        }
+
+        #startButton:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="score">Score: 0</div>
+    <div id="gameOver">GAME OVER<br>Press R to restart</div>
+    <div id="startScreen">
+        <h1>PSYCHEDELIC RACER</h1>
+        <p>Use arrow keys or WASD to move</p>
+        <button id="startButton">START GAME</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverScreen = document.getElementById('gameOver');
+        const scoreElement = document.getElementById('score');
+        const startScreen = document.getElementById('startScreen');
+        const startButton = document.getElementById('startButton');
+
+        // Set canvas size
+        canvas.width = 800;
+        canvas.height = 600;
+
+        // Game variables
+        let gameStarted = false;
+        let gameOver = false;
+        let score = 0;
+        let animationFrame;
+        let hue = 0;
+
+        // Player car
+        const car = {
+            x: canvas.width / 2,
+            y: canvas.height - 100,
+            width: 50,
+            height: 80,
+            speed: 5
+        };
+
+        // Track segments
+        const trackSegments = [];
+        const segmentHeight = 50;
+        const trackWidth = 300;
+        let trackOffset = 0;
+
+        // Obstacles
+        const obstacles = [];
+        const obstacleWidth = 50;
+        const obstacleHeight = 50;
+
+        // Initialize track
+        function initTrack() {
+            for (let i = 0; i < canvas.height / segmentHeight + 2; i++) {
+                trackSegments.push({
+                    y: i * segmentHeight,
+                    offset: Math.random() * 100 - 50
+                });
+            }
+        }
+
+        // Create new obstacle
+        function createObstacle() {
+            obstacles.push({
+                x: Math.random() * (canvas.width - obstacleWidth),
+                y: -obstacleHeight,
+                width: obstacleWidth,
+                height: obstacleHeight
+            });
+        }
+
+        // Draw psychedelic background
+        function drawBackground() {
+            hue = (hue + 0.5) % 360;
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, `hsl(${hue}, 100%, 50%)`);
+            gradient.addColorStop(0.5, `hsl(${(hue + 120) % 360}, 100%, 50%)`);
+            gradient.addColorStop(1, `hsl(${(hue + 240) % 360}, 100%, 50%)`);
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Draw track
+        function drawTrack() {
+            trackSegments.forEach(segment => {
+                const y = (segment.y + trackOffset) % canvas.height;
+                const x = canvas.width / 2 + segment.offset - trackWidth / 2;
+                
+                // Draw track segment
+                ctx.fillStyle = '#333';
+                ctx.fillRect(x, y, trackWidth, segmentHeight);
+                
+                // Draw track borders
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x, y, trackWidth, segmentHeight);
+            });
+        }
+
+        // Draw car
+        function drawCar() {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(car.x - car.width / 2, car.y - car.height / 2, car.width, car.height);
+            
+            // Add some car details
+            ctx.fillStyle = '#ff00ff';
+            ctx.fillRect(car.x - car.width / 2 + 5, car.y - car.height / 2 + 5, car.width - 10, car.height - 10);
+        }
+
+        // Draw obstacles
+        function drawObstacles() {
+            obstacles.forEach(obstacle => {
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            });
+        }
+
+        // Check collisions
+        function checkCollisions() {
+            return obstacles.some(obstacle => {
+                return car.x + car.width / 2 > obstacle.x &&
+                       car.x - car.width / 2 < obstacle.x + obstacle.width &&
+                       car.y + car.height / 2 > obstacle.y &&
+                       car.y - car.height / 2 < obstacle.y + obstacle.height;
+            });
+        }
+
+        // Update game state
+        function update() {
+            if (gameOver) return;
+
+            // Move track
+            trackOffset += 2;
+            if (trackOffset >= segmentHeight) {
+                trackOffset = 0;
+                trackSegments.push({
+                    y: trackSegments[trackSegments.length - 1].y + segmentHeight,
+                    offset: Math.random() * 100 - 50
+                });
+                trackSegments.shift();
+            }
+
+            // Move obstacles
+            obstacles.forEach(obstacle => {
+                obstacle.y += 3;
+            });
+
+            // Remove off-screen obstacles
+            obstacles.forEach((obstacle, index) => {
+                if (obstacle.y > canvas.height) {
+                    obstacles.splice(index, 1);
+                    score += 10;
+                    scoreElement.textContent = `Score: ${score}`;
+                }
+            });
+
+            // Create new obstacles
+            if (Math.random() < 0.02) {
+                createObstacle();
+            }
+
+            // Check collisions
+            if (checkCollisions()) {
+                gameOver = true;
+                gameOverScreen.style.display = 'block';
+            }
+        }
+
+        // Draw everything
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+            drawTrack();
+            drawObstacles();
+            drawCar();
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            animationFrame = requestAnimationFrame(gameLoop);
+        }
+
+        // Handle keyboard input
+        const keys = {};
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+            if (gameOver && e.key === 'r') {
+                resetGame();
+            }
+        });
+        window.addEventListener('keyup', e => {
+            keys[e.key] = false;
+        });
+
+        // Update car position based on input
+        function handleInput() {
+            if (keys['ArrowLeft'] || keys['a']) {
+                car.x = Math.max(car.width / 2, car.x - car.speed);
+            }
+            if (keys['ArrowRight'] || keys['d']) {
+                car.x = Math.min(canvas.width - car.width / 2, car.x + car.speed);
+            }
+        }
+
+        // Reset game
+        function resetGame() {
+            gameOver = false;
+            score = 0;
+            scoreElement.textContent = `Score: ${score}`;
+            gameOverScreen.style.display = 'none';
+            car.x = canvas.width / 2;
+            obstacles.length = 0;
+            trackSegments.length = 0;
+            initTrack();
+        }
+
+        // Start game
+        startButton.addEventListener('click', () => {
+            gameStarted = true;
+            startScreen.style.display = 'none';
+            initTrack();
+            gameLoop();
+        });
+
+        // Main game loop with input handling
+        function mainLoop() {
+            if (gameStarted && !gameOver) {
+                handleInput();
+            }
+            requestAnimationFrame(mainLoop);
+        }
+
+        mainLoop();
+    </script>
+</body>
+</html> 
